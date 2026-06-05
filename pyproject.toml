@@ -1,0 +1,156 @@
+[project]
+name = "skore-cli"
+description = """\
+Command-line interface for skore. \
+Discover, install and manage agent skills from the command line.\
+"""
+readme = "README.md"
+requires-python = ">=3.11"
+maintainers = [{ name = "skore developers", email = "skore@signal.probabl.ai" }]
+license = "MIT"
+license-files = ["LICENSE"]
+version = "0.0.1.dev0"
+classifiers = [
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python",
+  "Topic :: Software Development",
+  "Topic :: Scientific/Engineering",
+  "Development Status :: 3 - Alpha",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX",
+  "Operating System :: Unix",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "click",
+  "rich>=14.2",
+  "rich-click>=1.9",
+  "textual",
+]
+
+[project.optional-dependencies]
+test = [
+  "pre-commit",
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "pytest-order",
+  "pytest-randomly",
+  "pytest-xdist",
+  "xdoctest",
+]
+
+[project.scripts]
+skore = "skore_cli:cli"
+
+[project.urls]
+Homepage = "https://probabl.ai"
+Repository = "https://github.com/probabl-ai/skore"
+Issues = "https://github.com/probabl-ai/skore/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/"]
+
+[tool.hatch.build.targets.wheel]
+package = ["src/skore_cli/"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+
+[tool.pixi.pypi-dependencies]
+skore-cli = { path = ".", editable = true }
+
+[tool.pixi.feature.test.tasks]
+tests = "pytest tests"
+
+[tool.pixi.feature.py311.dependencies]
+python = "3.11.*"
+
+[tool.pixi.feature.py312.dependencies]
+python = "3.12.*"
+
+[tool.pixi.feature.py313.dependencies]
+python = "3.13.*"
+
+[tool.pixi.environments]
+test-py311 = ["test", "py311"]
+test-py312 = ["test", "py312"]
+test-py313 = ["test", "py313"]
+
+[tool.pytest.ini_options]
+addopts = [
+  "-ra",
+  "--strict-markers",
+  "--strict-config",
+  "--xdoctest",
+  "--import-mode=importlib",
+  "--no-header",
+  "--verbosity=2",
+  "--dist=loadscope",
+  "--durations=25",
+]
+xfail_strict = true
+asyncio_mode = "auto"
+log_cli_level = "info"
+
+[tool.coverage.run]
+branch = true
+source = ["skore_cli"]
+concurrency = ["thread", "multiprocessing"]
+parallel = true
+
+[tool.coverage.report]
+omit = ["src/*", "tests/*"]
+show_missing = true
+exclude_also = [
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff.lint]
+select = [
+    "B",
+    "C4",
+    "T10",
+    "T20",
+    "PYI055", "PYI059",
+    "PT003", "PT014",
+    "SIM",
+    "I",
+    "PERF",
+    "E",
+    "D",
+    "F",
+    "UP",
+    "RUF010", "RUF015",
+]
+ignore = ["PERF203"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+
+[tool.mypy]
+exclude = ["tests/"]
+strict = true
+
+[[tool.mypy.overrides]]
+ignore_missing_imports = true
+module = [
+  "rich_click.*",
+  "textual.*",
+]

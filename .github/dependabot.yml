@@ -1,0 +1,15 @@
+version: 2
+updates:
+  # Keep GitHub Actions pinned by commit hash up to date. As recommended in
+  # SPEC8 (https://github.com/scientific-python/specs/pull/325), workflows pin
+  # actions by commit hash for security, and dependabot bumps the hashes.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore(dependencies): GITHUB-ACTIONS"

@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Unit test / coverage reports
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+coverage.xml
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# pixi
+.pixi/
+pixi.lock
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
