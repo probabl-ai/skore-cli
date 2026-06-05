@@ -424,6 +424,30 @@ def test_find_interactive_cancelled(release, workspace, monkeypatch):
     assert "alpha" not in result.output
 
 
+def test_find_all_lists_everything_without_picker(release, workspace, monkeypatch):
+    monkeypatch.setattr(_skills, "_is_interactive", lambda: True)
+
+    def _boom(catalog):
+        raise AssertionError("the interactive picker must not be launched")
+
+    monkeypatch.setattr(_skills, "ProbablSkillsFinder", _boom)
+
+    result = _invoke(["skills", "find", "--all"])
+
+    assert result.exit_code == 0
+    assert "alpha" in result.output
+    assert "beta" in result.output
+    assert "flow" in result.output
+
+
+def test_find_all_ignores_query(release, workspace):
+    result = _invoke(["skills", "find", "--all", "tooling"])
+
+    assert result.exit_code == 0
+    assert "alpha" in result.output
+    assert "beta" in result.output
+
+
 async def test_finder_app_returns_selection(release):
     _, _, catalog = fetch_release()
 

@@ -410,14 +410,25 @@ def list_skills(agent, global_) -> None:
 
 @skills.command("find")
 @click.argument("query", required=False)
-def find(query) -> None:
+@click.option(
+    "--all",
+    "all_",
+    is_flag=True,
+    help="List every skill and workflow without the interactive picker.",
+)
+def find(query, all_) -> None:
     """Search available skills and workflows in the latest release.
 
     Without a query in an interactive terminal, an interactive picker is
     launched and the chosen entries are rendered; otherwise the matching
-    catalog entries are listed.
+    catalog entries are listed. Pass ``--all`` to list the whole catalog
+    without launching the interactive picker.
     """
     with _release() as (_, _, catalog):
+        if all_:
+            _render_catalog(catalog)
+            return
+
         if query is None and _is_interactive():
             _interactive_find(catalog)
             return
