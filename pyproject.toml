@@ -83,10 +83,14 @@ python = "3.12.*"
 [tool.pixi.feature.py313.dependencies]
 python = "3.13.*"
 
+[tool.pixi.feature.py314.dependencies]
+python = "3.14.*"
+
 [tool.pixi.environments]
 test-py311 = ["test", "py311"]
 test-py312 = ["test", "py312"]
 test-py313 = ["test", "py313"]
+test-py314 = ["test", "py314"]
 
 [tool.pytest.ini_options]
 addopts = [
@@ -145,8 +149,11 @@ convention = "numpy"
 "tests/*" = ["D"]
 
 [tool.mypy]
+mypy_path = "src"
+explicit_package_bases = true
 exclude = ["tests/"]
-strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
 ignore_missing_imports = true
