@@ -199,17 +199,6 @@ def _fake_find_app(result):
     return _FakeFindApp
 
 
-def _fake_menu(choice):
-    class _FakeMenu:
-        def __init__(self):
-            self.result = choice
-
-        def run(self):
-            return None
-
-    return _FakeMenu
-
-
 def _fake_manage_picker(result):
     class _FakePicker:
         def __init__(self, skill_ids, *, title):
@@ -647,25 +636,6 @@ def test_skills_no_subcommand_shows_help(release, workspace):
     assert result.exit_code == 0
     assert "install" in result.output
     assert "find" in result.output
-
-
-def test_skills_menu_dispatches_install(release, workspace, monkeypatch):
-    monkeypatch.setattr(_skills, "_is_interactive", lambda: True)
-    monkeypatch.setattr(_skills, "SkillsMenu", _fake_menu("install"))
-    monkeypatch.setattr(
-        _skills,
-        "_interactive_install_options",
-        lambda catalog, *, agent, default_global: (
-            [_skills._index(catalog)[0]["alpha"]],
-            ["agents"],
-            False,
-        ),
-    )
-
-    result = _invoke(["skills"])
-
-    assert result.exit_code == 0
-    assert (workspace.project / ".agents" / "skills" / "alpha").is_dir()
 
 
 async def test_auto_radio_set_selects_on_arrow(release):

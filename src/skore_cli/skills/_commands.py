@@ -22,7 +22,6 @@ from skore_cli.skills.app import (
     InstalledSkillsPicker,
     ProbablSkillsFinder,
     ProbablSkillsInstaller,
-    SkillsMenu,
 )
 
 SIDECAR = ".skore-skill.json"
@@ -285,25 +284,8 @@ def _interactive_find(catalog: dict[str, Any]) -> None:
 @click.pass_context
 def skills(ctx) -> None:
     """Install and manage Agent Skills from the probabl-ai/skills release."""
-    if ctx.invoked_subcommand is not None:
-        return
-    if not _is_interactive():
+    if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
-        return
-    app = SkillsMenu()
-    app.run()
-    choice = app.result
-    if choice is None:
-        return
-    command = {
-        "find": find,
-        "list": list_skills,
-        "install": install,
-        "update": update,
-        "remove": remove,
-    }.get(choice)
-    if command is not None:
-        ctx.invoke(command)
 
 
 @skills.command("install")
