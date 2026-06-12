@@ -27,7 +27,3 @@ skore skills remove        # remove installed skills
 
 Skills are installed into the current project by default; pass `--global`/`-g`
 to target the user directory, and `--agent`/`-a` to select specific agents.
-
-## License
-
-MIT
