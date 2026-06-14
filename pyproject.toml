@@ -35,6 +35,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The `hub` and `agent` commands reuse skore's authentication machinery; the
+# Continue and Claude Code harness writers need PyYAML to (de)serialize configs.
+agent = ["skore[hub]", "pyyaml"]
 test = [
   "pre-commit",
   "pytest",
