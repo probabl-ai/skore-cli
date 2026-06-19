@@ -7,6 +7,10 @@ Auth mirrors the existing Python authentication:
 * otherwise an interactive **device-flow** login obtains a (short-lived) token,
   which is the only thing we persist (so a separate opencode process can use it).
 
+The ``api-key`` subgroup (``skore hub api-key``) mints, lists and revokes
+workspace-scoped API keys against the hub, mirroring the hub UI. It requires a
+prior ``skore hub login`` (a stored OAuth token).
+
 Heavy ``skore`` imports are deferred into the command callbacks so building the
 CLI (and ``--help``) never imports the ``skore`` package.
 """
@@ -17,18 +21,19 @@ import os
 
 import rich_click as click
 
+from skore_cli._skore import URI_ENV, resolve_hub_uri
 from skore_cli._skore import auth as _auth
 from skore_cli._style import console
 
-# These mirror ``skore._plugins.hub.authentication`` env var names; kept as local
-# literals so showing help never imports the (heavy) ``skore`` package.
+# Mirrors ``skore._plugins.hub.authentication`` env var name; kept as a local
+# literal so showing help never imports the (heavy) ``skore`` package.
 API_KEY_ENV = "SKORE_HUB_API_KEY"
-URI_ENV = "SKORE_HUB_URI"
 
 click.rich_click.COMMAND_GROUPS = {
     **getattr(click.rich_click, "COMMAND_GROUPS", {}),
     "cli hub": [
         {"name": "Authentication", "commands": ["login", "logout", "status"]},
+        {"name": "API keys", "commands": ["api-key"]},
     ],
 }
 
@@ -63,10 +68,7 @@ def login(hub_url: str | None, timeout: int) -> None:
     user-managed and read from the environment. Without one, run the interactive
     device flow and persist the resulting token locally.
     """
-    if hub_url:
-        os.environ[URI_ENV] = hub_url
-
-    uri = _auth("uri").URI()
+    uri = resolve_hub_uri(hub_url, _auth)
 
     if os.environ.get(API_KEY_ENV):
         console.print(
@@ -168,3 +170,10 @@ def status() -> None:
         raise click.ClickException(
             "Not authenticated. Set SKORE_HUB_API_KEY or run `skore hub login`."
         )
+
+
+# The api-key subgroup is attached here; its heavy deps (httpx/textual) stay
+# deferred inside its own command callbacks.
+from skore_cli.hub._api_keys import api_key as _api_key_group  # noqa: E402
+
+hub.add_command(_api_key_group)

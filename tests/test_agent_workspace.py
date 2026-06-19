@@ -1,4 +1,4 @@
-"""Tests for attaching the agent to a hub workspace (`skore agent init`)."""
+"""Tests for attaching the agent to a hub workspace (`skore agent model install`)."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ import pytest
 import rich_click as click
 from click.testing import CliRunner
 
-from skore_cli.agent import _commands
-from skore_cli.agent._commands import init
 from skore_cli.agent._harnesses import (
+    HARNESSES,
     WORKSPACE_HEADER,
     ConfigureContext,
     Credential,
-    HARNESSES,
 )
+from skore_cli.agent.model import _commands
+from skore_cli.agent.model._commands import install
 
 
 def _opencode_headers(workspace, cred, hub_workspace):
@@ -43,19 +43,19 @@ def test_opencode_writes_workspace_header_for_bearer(tmp_path):
 def test_opencode_no_workspace_header_for_api_key(tmp_path, monkeypatch):
     monkeypatch.setenv("SKORE_HUB_API_KEY", "uid:secret")
     # API keys are workspace-bound server-side: no header is written.
-    headers = _opencode_headers(
-        tmp_path, Credential("api_key"), hub_workspace=None
-    )
+    headers = _opencode_headers(tmp_path, Credential("api_key"), hub_workspace=None)
     assert WORKSPACE_HEADER not in headers
     assert headers["X-API-Key"] == "{env:SKORE_HUB_API_KEY}"
 
 
-def test_init_records_attached_workspace_in_marker(tmp_path, monkeypatch):
+def test_install_records_attached_workspace_in_marker(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands, "resolve_credential", lambda: Credential("bearer", "tok")
     )
+    # Resolve the hub URL without importing the (absent) skore package.
+    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda url, *a, **k: url)
     result = CliRunner().invoke(
-        init,
+        install,
         [
             "--workspace",
             str(tmp_path),

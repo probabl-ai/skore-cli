@@ -1,7 +1,7 @@
-"""Tests for the ``skore agent`` commands (status, init guards, skills install).
+"""Tests for ``skore agent model`` commands (status, install guards, skills).
 
 These complement ``test_agent_workspace.py`` (which already covers the opencode
-writer, the init marker and ``_resolve_hub_workspace``) without duplicating it.
+writer, the install marker and ``_resolve_hub_workspace``) without duplicating it.
 """
 
 from __future__ import annotations
@@ -9,12 +9,11 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-import pytest
 from click.testing import CliRunner
 
-from skore_cli.agent import _commands
-from skore_cli.agent._commands import init, status
 from skore_cli.agent._harnesses import MARKER_FILENAME, Credential
+from skore_cli.agent.model import _commands
+from skore_cli.agent.model._commands import install, status
 
 
 def _write_marker(directory, **overrides):
@@ -41,7 +40,7 @@ def test_status_missing_marker_errors(tmp_path):
     result = CliRunner().invoke(status, ["--workspace", str(tmp_path)])
 
     assert result.exit_code != 0
-    assert "run `skore agent init`" in result.output
+    assert "run `skore agent model install`" in result.output
 
 
 def test_status_prints_marker_fields(tmp_path):
@@ -78,24 +77,24 @@ def test_status_no_local_skills_note(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# init guards
+# install guards
 # --------------------------------------------------------------------------- #
 
 
-def test_init_non_interactive_without_harness_errors(tmp_path, monkeypatch):
+def test_install_non_interactive_without_harness_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(_commands, "_is_interactive", lambda: False)
 
-    result = CliRunner().invoke(init, ["--workspace", str(tmp_path), "--no-skills"])
+    result = CliRunner().invoke(install, ["--workspace", str(tmp_path), "--no-skills"])
 
     assert result.exit_code != 0
     assert "Specify --harness" in result.output
 
 
-def test_init_nonexistent_workspace_errors(tmp_path):
+def test_install_nonexistent_workspace_errors(tmp_path):
     missing = tmp_path / "does-not-exist"
 
     result = CliRunner().invoke(
-        init, ["--workspace", str(missing), "--harness", "generic", "--no-skills"]
+        install, ["--workspace", str(missing), "--harness", "generic", "--no-skills"]
     )
 
     assert result.exit_code != 0
@@ -103,17 +102,17 @@ def test_init_nonexistent_workspace_errors(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# init happy path (generic harness)
+# install happy path (generic harness)
 # --------------------------------------------------------------------------- #
 
 
-def test_init_generic_happy_path(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        _commands, "resolve_credential", lambda: Credential("api_key")
-    )
+def test_install_generic_happy_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(_commands, "resolve_credential", lambda: Credential("api_key"))
+    # Resolve the hub URL without importing the (absent) skore package.
+    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda url, *a, **k: url)
 
     result = CliRunner().invoke(
-        init,
+        install,
         [
             "--workspace",
             str(tmp_path),
@@ -129,6 +128,7 @@ def test_init_generic_happy_path(tmp_path, monkeypatch):
     marker = json.loads((tmp_path / MARKER_FILENAME).read_text())
     assert marker["harness"] == "generic"
     assert marker["auth"] == "api_key"
+    assert marker["hub_url"] == "http://hub.test"
     assert (tmp_path / "skore-agent.json").is_file()
 
 

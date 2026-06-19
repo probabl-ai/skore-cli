@@ -10,15 +10,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import importlib
-
 import pytest
 from click.testing import CliRunner
 
-# ``skore_cli.__init__`` rebinds the ``hub`` attribute to the command group, which
-# shadows the submodule for ``import skore_cli.hub as hub``; fetch the real module
-# from ``sys.modules`` so we can monkeypatch its ``_auth`` accessor.
-hub = importlib.import_module("skore_cli.hub")
+# The commands live in ``skore_cli.hub._commands``; import that module so
+# ``monkeypatch.setattr(hub, "_auth", ...)`` targets the namespace the command
+# callbacks actually resolve ``_auth`` from.
+from skore_cli.hub import _commands as hub
+
 hub_cli = hub.hub
 
 
@@ -156,16 +155,52 @@ def test_login_without_key_runs_device_flow(monkeypatch, no_api_key):
 def test_login_hub_url_sets_env(monkeypatch, no_api_key):
     recorder = _Recorder(None)
     # URI() echoes the env var the command is expected to set from --hub-url.
-    monkeypatch.setattr(
-        hub, "_auth", _make_auth(recorder, uri="http://127.0.0.1:9999")
-    )
+    monkeypatch.setattr(hub, "_auth", _make_auth(recorder, uri="http://127.0.0.1:9999"))
 
-    result = CliRunner().invoke(hub_cli, ["login", "--hub-url", "http://127.0.0.1:9999"])
+    result = CliRunner().invoke(
+        hub_cli, ["login", "--hub-url", "http://127.0.0.1:9999"]
+    )
 
     assert result.exit_code == 0, result.output
     import os
 
     assert os.environ.get("SKORE_HUB_URI") == "http://127.0.0.1:9999"
+
+
+# --------------------------------------------------------------------------- #
+# resolve_hub_uri (shared by hub login, agent init, agent mcp serve)
+# --------------------------------------------------------------------------- #
+
+
+def test_resolve_hub_uri_seeds_env_and_resolves(no_api_key):
+    import os
+
+    from skore_cli import _skore
+
+    seen = {}
+
+    def fake_auth(name):
+        seen["name"] = name
+        return SimpleNamespace(URI=lambda: "http://resolved")
+
+    uri = _skore.resolve_hub_uri("http://127.0.0.1:8000", fake_auth)
+
+    assert seen["name"] == "uri"
+    assert os.environ.get("SKORE_HUB_URI") == "http://127.0.0.1:8000"
+    assert uri == "http://resolved"
+
+
+def test_resolve_hub_uri_without_url_leaves_env(no_api_key):
+    import os
+
+    from skore_cli import _skore
+
+    uri = _skore.resolve_hub_uri(
+        None, lambda name: SimpleNamespace(URI=lambda: "http://default")
+    )
+
+    assert "SKORE_HUB_URI" not in os.environ
+    assert uri == "http://default"
 
 
 # --------------------------------------------------------------------------- #

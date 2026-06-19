@@ -32,12 +32,18 @@ dependencies = [
   "rich>=14.2",
   "rich-click>=1.9",
   "textual",
+  # The `hub` and `agent` commands reuse skore's authentication machinery; the
+  # Continue and Claude Code harness writers need PyYAML to (de)serialize
+  # configs; the `agent mcp` command runs a local MCP server (the `mcp` SDK)
+  # that drives a headless opencode process via subprocess; the `hub api-key`
+  # commands call the hub identity API directly with httpx.
+  "skore[hub]",
+  "pyyaml",
+  "mcp>=1.2",
+  "httpx",
 ]
 
 [project.optional-dependencies]
-# The `hub` and `agent` commands reuse skore's authentication machinery; the
-# Continue and Claude Code harness writers need PyYAML to (de)serialize configs.
-agent = ["skore[hub]", "pyyaml"]
 test = [
   "pre-commit",
   "pytest",
@@ -163,4 +169,5 @@ ignore_missing_imports = true
 module = [
   "rich_click.*",
   "textual.*",
+  "mcp.*",
 ]

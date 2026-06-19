@@ -484,7 +484,7 @@ def _yaml_missing():
 
     return click.ClickException(
         "this harness needs PyYAML (install it with `pip install "
-        "'skore-cli[agent]'` or `pip install pyyaml`)."
+        "skore-cli` or `pip install pyyaml`)."
     )
 
 
