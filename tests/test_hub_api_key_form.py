@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from textual.widgets import SelectionList
 
-from skore_cli.hub.app import ApiKeyForm, ApiKeyPicker
+from skore_cli.hub.app import ApiKeyForm, IdPicker
 
 WORKSPACES = [(7, "ws-a"), (8, "ws-b")]
 GRANTABLE = {7: ["create:project", "read:project"], 8: ["read:project"]}
@@ -95,12 +95,12 @@ async def test_form_permissions_track_workspace():
 
 
 # --------------------------------------------------------------------------- #
-# ApiKeyPicker
+# IdPicker
 # --------------------------------------------------------------------------- #
 
 
 async def test_picker_confirms_selection():
-    app = ApiKeyPicker([(5, "5  laptop"), (6, "6  ci")], preselect=0)
+    app = IdPicker([(5, "5  laptop"), (6, "6  ci")], preselect=0)
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -110,7 +110,7 @@ async def test_picker_confirms_selection():
 
 
 async def test_picker_cancel_returns_none():
-    app = ApiKeyPicker([(5, "5  laptop")])
+    app = IdPicker([(5, "5  laptop")])
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("escape")

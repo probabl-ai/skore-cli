@@ -449,7 +449,7 @@ def test_revoke_interactive_picker(monkeypatch):
         def run(self):
             return None
 
-    monkeypatch.setattr(hub_app, "ApiKeyPicker", _FakePicker)
+    monkeypatch.setattr(hub_app, "IdPicker", _FakePicker)
     deleted = {}
     monkeypatch.setattr(
         _client,

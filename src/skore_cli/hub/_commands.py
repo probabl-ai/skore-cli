@@ -8,8 +8,10 @@ Auth mirrors the existing Python authentication:
   which is the only thing we persist (so a separate opencode process can use it).
 
 The ``api-key`` subgroup (``skore hub api-key``) mints, lists and revokes
-workspace-scoped API keys against the hub, mirroring the hub UI. It requires a
-prior ``skore hub login`` (a stored OAuth token).
+workspace-scoped API keys against the hub, mirroring the hub UI. The
+``agent-provider`` subgroup manages a workspace's agent LLM provider config, and
+the ``workspace`` subgroup manages the lifecycle of the workspaces themselves.
+All require a prior ``skore hub login`` (a stored OAuth token).
 
 Heavy ``skore`` imports are deferred into the command callbacks so building the
 CLI (and ``--help``) never imports the ``skore`` package.
@@ -34,6 +36,8 @@ click.rich_click.COMMAND_GROUPS = {
     "cli hub": [
         {"name": "Authentication", "commands": ["login", "logout", "status"]},
         {"name": "API keys", "commands": ["api-key"]},
+        {"name": "Agent", "commands": ["agent-provider"]},
+        {"name": "Workspace", "commands": ["workspace"]},
     ],
 }
 
@@ -172,8 +176,14 @@ def status() -> None:
         )
 
 
-# The api-key subgroup is attached here; its heavy deps (httpx/textual) stay
-# deferred inside its own command callbacks.
+# The api-key/agent-provider/workspace subgroups are attached here; their heavy
+# deps (httpx/textual) stay deferred inside their own command callbacks.
+from skore_cli.hub._agent_providers import (  # noqa: E402
+    agent_provider as _agent_provider_group,
+)
 from skore_cli.hub._api_keys import api_key as _api_key_group  # noqa: E402
+from skore_cli.hub._workspaces import workspace as _workspace_group  # noqa: E402
 
 hub.add_command(_api_key_group)
+hub.add_command(_agent_provider_group)
+hub.add_command(_workspace_group)

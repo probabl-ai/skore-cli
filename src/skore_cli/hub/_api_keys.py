@@ -282,7 +282,7 @@ def revoke(hub_url: str | None, api_key_id: int | None, yes: bool) -> None:
                 "pass --id <id> to revoke non-interactively (ids: "
                 f"{', '.join(str(key.id) for key in keys)})."
             )
-        from skore_cli.hub.app import ApiKeyPicker
+        from skore_cli.hub.app import IdPicker
 
         labels = [
             (
@@ -292,7 +292,7 @@ def revoke(hub_url: str | None, api_key_id: int | None, yes: bool) -> None:
             )
             for key in keys
         ]
-        app = ApiKeyPicker(labels)
+        app = IdPicker(labels, title="Choose the API key to revoke.")
         app.run()
         if app.result is None:
             console.print("Nothing revoked.")

@@ -1,9 +1,10 @@
 """Textual apps backing the interactive ``skore hub api-key`` commands.
 
 ``ApiKeyForm`` is a single-screen form (name, workspace, permissions, validity)
-mirroring the hub UI's create modal; ``ApiKeyPicker`` is a single-select picker
-used by ``revoke``. Both follow the package convention: set ``self.result`` then
-``exit()``; the caller reads ``app.result`` after ``app.run()``.
+mirroring the hub UI's create modal; ``IdPicker`` is a generic single-select
+picker over ``(id, label)`` rows. Both follow the package convention: set
+``self.result`` then ``exit()``; the caller reads ``app.result`` after
+``app.run()``.
 """
 
 from __future__ import annotations
@@ -211,14 +212,17 @@ class ApiKeyForm(App[ApiKeyFormResult | None]):
         self.exit()
 
 
-_PICKER_INTRO = (
-    "Choose the API key to revoke.\n"
+_PICKER_KEYS = (
     "[reverse] ↑/↓ [/] choose  [reverse] enter [/] confirm  [reverse] esc [/] cancel"
 )
 
 
-class ApiKeyPicker(App[int | None]):
-    """Pick a single API key id to revoke."""
+class IdPicker(App[int | None]):
+    """Single-select picker over ``(id, label)`` rows; returns the chosen id.
+
+    Used wherever a command needs the user to pick one of several hub objects
+    (an API key to revoke, a provider to activate/remove, a workspace).
+    """
 
     CSS = """
     Screen {
@@ -243,16 +247,23 @@ class ApiKeyPicker(App[int | None]):
         Binding("escape", "cancel", "Cancel"),
     ]
 
-    def __init__(self, keys: list[tuple[int, str]], *, preselect: int = 0) -> None:
+    def __init__(
+        self,
+        keys: list[tuple[int, str]],
+        *,
+        title: str = "Choose an item.",
+        preselect: int = 0,
+    ) -> None:
         super().__init__()
         self._keys = keys
+        self._title = title
         self._preselect = preselect
         self.result: int | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
         with VerticalScroll(id="picker"):
-            yield Label(_PICKER_INTRO, classes="picker-intro")
+            yield Label(f"{self._title}\n{_PICKER_KEYS}", classes="picker-intro")
             with AutoRadioSet(id="keys"):
                 for index, (_, label) in enumerate(self._keys):
                     yield RadioButton(label, value=index == self._preselect)
@@ -264,7 +275,7 @@ class ApiKeyPicker(App[int | None]):
     def action_confirm(self) -> None:
         index = self.query_one("#keys", AutoRadioSet).pressed_index
         if index < 0:
-            self.notify("Select a key.", severity="warning")
+            self.notify("Select an item.", severity="warning")
             return
         self.result = self._keys[index][0]
         self.exit()

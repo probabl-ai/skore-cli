@@ -1,10 +1,21 @@
-"""Textual applications backing the interactive ``skore hub api-key`` commands."""
+"""Textual applications backing the interactive ``skore hub`` commands."""
 
 from skore_cli.hub.app._form import (
     VALIDITY_CHOICES,
     ApiKeyForm,
     ApiKeyFormResult,
-    ApiKeyPicker,
+    IdPicker,
+)
+from skore_cli.hub.app._provider_form import (
+    AgentProviderForm,
+    AgentProviderFormResult,
 )
 
-__all__ = ["VALIDITY_CHOICES", "ApiKeyForm", "ApiKeyFormResult", "ApiKeyPicker"]
+__all__ = [
+    "VALIDITY_CHOICES",
+    "AgentProviderForm",
+    "AgentProviderFormResult",
+    "ApiKeyForm",
+    "ApiKeyFormResult",
+    "IdPicker",
+]
