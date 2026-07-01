@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 
 from click.testing import CliRunner
 
-from skore_cli.agent import _commands
+from skore_cli.agent import _commands, _harnesses
 from skore_cli.agent._commands import agent
 from skore_cli.agent._harnesses import DEFAULT_MODEL_ID, HARNESSES, HarnessContext
 from skore_cli.agent._skore_file import (
@@ -15,6 +16,22 @@ from skore_cli.agent._skore_file import (
     ensure_gitignore_entry,
 )
 from skore_cli.hub import _client
+
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain_output(output: str) -> str:
+    """Strip ANSI codes from rich-click panels for stable assertions."""
+    return _ANSI_ESCAPE.sub("", output)
+
+
+def _mock_harness_on_path(monkeypatch, name: str) -> None:
+    """Pretend the harness binary is installed without relying on the real PATH."""
+    monkeypatch.setattr(
+        _harnesses.shutil,
+        "which",
+        lambda cmd: f"/usr/bin/{cmd}" if cmd == name else None,
+    )
 
 
 def _membership(public_id: str = "ws-1", workspace_id: int = 1):
@@ -96,10 +113,10 @@ def test_agent_nonexistent_workspace_errors(tmp_path):
 
 def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):
     _write_skore(tmp_path)
+    _mock_harness_on_path(monkeypatch, "opencode")
     monkeypatch.setattr(
         _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
     )
-    monkeypatch.setattr(_commands, "detect_harnesses", lambda workspace: ["opencode"])
     launched: list[str] = []
     monkeypatch.setattr(
         _commands,
@@ -118,6 +135,7 @@ def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):
 
 
 def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
+    _mock_harness_on_path(monkeypatch, "opencode")
     monkeypatch.setattr(
         _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
     )
@@ -137,7 +155,6 @@ def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
         "create_api_key",
         lambda *a, **k: (42, "new-secret"),
     )
-    monkeypatch.setattr(_commands, "detect_harnesses", lambda workspace: ["opencode"])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -171,7 +188,7 @@ def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
     result = CliRunner().invoke(agent, ["--workspace", str(tmp_path)])
 
     assert result.exit_code != 0
-    assert "pass --harness" in result.output
+    assert "pass --harness" in _plain_output(result.output)
 
 
 def test_resolve_api_key_name_deduplicates():
