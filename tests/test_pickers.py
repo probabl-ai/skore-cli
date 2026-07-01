@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from skore_cli.agent.app import HarnessPicker, WorkspacePicker
+from skore_cli.app._help import HelpScreen
 
 HARNESSES = [
-    ("opencode", "opencode", True),
-    ("copilot", "GitHub Copilot CLI", False),
-    ("generic", "generic", False),
+    ("opencode", "OpenCode", True),
+    ("claude", "Claude", False),
+    ("pi", "Pi", False),
 ]
 
 WORKSPACES = [("ws-1", "First"), ("ws-2", "Second")]
@@ -35,7 +36,7 @@ async def test_harness_picker_honors_preselect():
         await pilot.press("enter")
         await pilot.pause()
 
-    assert app.result == "copilot"
+    assert app.result == "claude"
 
 
 async def test_harness_picker_cancel_returns_none():
@@ -46,6 +47,18 @@ async def test_harness_picker_cancel_returns_none():
         await pilot.pause()
 
     assert app.result is None
+
+
+async def test_harness_picker_help_screen():
+    app = HarnessPicker(HARNESSES, preselect=0)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("?")
+        await pilot.pause()
+        assert isinstance(app.screen, HelpScreen)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.is_running is True
 
 
 # --------------------------------------------------------------------------- #

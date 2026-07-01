@@ -34,9 +34,12 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 
-@click.group("api-key")
-def api_key() -> None:
+@click.group("api-key", invoke_without_command=True)
+@click.pass_context
+def api_key(ctx) -> None:
     """Create, list and revoke workspace-scoped hub API keys."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
 
 
 def _is_interactive() -> bool:

@@ -18,7 +18,7 @@ from typing import Any
 
 import rich_click as click
 
-from skore_cli._skore import auth as _auth
+from skore_cli._hub_auth import ensure_login
 
 # The grantable permissions, kept as local literals so ``--help`` never imports
 # the (heavy) ``skore``/hub packages. Mirrors hub ``Permission`` enum values.
@@ -111,13 +111,7 @@ def require_login_token() -> str:
     This gates ``skore hub api-key`` behind a prior ``skore hub login``: an
     ``SKORE_HUB_API_KEY`` alone is intentionally not sufficient to mint new keys.
     """
-    token = _auth("token").fresh_token(relogin=False)
-    if not token or not token.get("access_token"):
-        raise click.ClickException(
-            "not logged in; run `skore hub login` first. API keys are minted with "
-            "your interactive login, not an existing SKORE_HUB_API_KEY."
-        )
-    return token["access_token"]
+    return ensure_login()
 
 
 def _client(hub_url: str, token: str, transport: Any = None):

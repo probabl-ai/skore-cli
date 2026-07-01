@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from textual.widgets import SelectionList
 
+from skore_cli.app._help import HelpScreen
 from skore_cli.hub.app import ApiKeyForm, IdPicker
 
 WORKSPACES = [(7, "ws-a"), (8, "ws-b")]
@@ -72,6 +73,18 @@ async def test_form_cancel_returns_none():
         await pilot.pause()
 
     assert app.result is None
+
+
+async def test_form_help_screen():
+    app = ApiKeyForm(WORKSPACES, GRANTABLE, name="x", preselect_workspace_id=7)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("?")
+        await pilot.pause()
+        assert isinstance(app.screen, HelpScreen)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.is_running is True
 
 
 def _permission_values(app):

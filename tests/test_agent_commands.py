@@ -1,163 +1,168 @@
-"""Tests for ``skore agent model`` commands (status, install guards, skills).
-
-These complement ``test_agent_workspace.py`` (which already covers the opencode
-writer, the install marker and ``_resolve_hub_workspace``) without duplicating it.
-"""
+"""Tests for the ``skore agent`` command and ``.skore`` persistence."""
 
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 
 from click.testing import CliRunner
 
-from skore_cli.agent._harnesses import MARKER_FILENAME, Credential
-from skore_cli.agent.model import _commands
-from skore_cli.agent.model._commands import install, status
+from skore_cli.agent import _commands, _harnesses
+from skore_cli.agent._commands import agent
+from skore_cli.agent._harnesses import HARNESSES, HarnessContext, DEFAULT_MODEL_ID
+from skore_cli.agent._skore_file import SKORE_FILENAME, SkoreConfig, ensure_gitignore_entry
+from skore_cli.hub import _client
 
 
-def _write_marker(directory, **overrides):
-    marker = {
-        "harness": "opencode",
-        "hub_url": "http://hub.test",
-        "base_url": "http://hub.test/v1",
-        "hub_workspace": "ws-1",
-        "model_id": "skore-agent",
-        "auth": "bearer",
-        "session_binding": "plugin",
-    }
-    marker.update(overrides)
-    (directory / MARKER_FILENAME).write_text(json.dumps(marker) + "\n")
-    return marker
-
-
-# --------------------------------------------------------------------------- #
-# status
-# --------------------------------------------------------------------------- #
-
-
-def test_status_missing_marker_errors(tmp_path):
-    result = CliRunner().invoke(status, ["--workspace", str(tmp_path)])
-
-    assert result.exit_code != 0
-    assert "run `skore agent model install`" in result.output
-
-
-def test_status_prints_marker_fields(tmp_path):
-    _write_marker(tmp_path)
-
-    result = CliRunner().invoke(status, ["--workspace", str(tmp_path)])
-
-    assert result.exit_code == 0, result.output
-    assert "opencode" in result.output
-    assert "http://hub.test/v1" in result.output
-    assert "skore-agent" in result.output
-    assert "ws-1" in result.output
-
-
-def test_status_counts_local_skills(tmp_path):
-    _write_marker(tmp_path)
-    skills_dir = tmp_path / ".agents" / "skills"
-    skills_dir.mkdir(parents=True)
-    (skills_dir / "alpha").mkdir()
-    (skills_dir / "beta").mkdir()
-
-    result = CliRunner().invoke(status, ["--workspace", str(tmp_path)])
-
-    assert result.exit_code == 0, result.output
-    assert "2 local" in result.output
-
-
-def test_status_no_local_skills_note(tmp_path):
-    _write_marker(tmp_path)
-
-    result = CliRunner().invoke(status, ["--workspace", str(tmp_path)])
-
-    assert "served by hub" in result.output
-
-
-# --------------------------------------------------------------------------- #
-# install guards
-# --------------------------------------------------------------------------- #
-
-
-def test_install_non_interactive_without_harness_errors(tmp_path, monkeypatch):
-    monkeypatch.setattr(_commands, "_is_interactive", lambda: False)
-
-    result = CliRunner().invoke(install, ["--workspace", str(tmp_path), "--no-skills"])
-
-    assert result.exit_code != 0
-    assert "Specify --harness" in result.output
-
-
-def test_install_nonexistent_workspace_errors(tmp_path):
-    missing = tmp_path / "does-not-exist"
-
-    result = CliRunner().invoke(
-        install, ["--workspace", str(missing), "--harness", "generic", "--no-skills"]
+def _membership(public_id: str = "ws-1", workspace_id: int = 1):
+    return _client.Membership(
+        workspace_id=workspace_id,
+        public_id=public_id,
+        permissions=frozenset(_commands.PROJECT_PERMISSIONS),
     )
 
+
+def _write_skore(directory, **overrides):
+    payload = {
+        "hub_url": "http://hub.test",
+        "workspace": "ws-1",
+        "workspace_id": 1,
+        "api_key": "secret-key",
+        "harness": "opencode",
+    }
+    payload.update(overrides)
+    (directory / SKORE_FILENAME).write_text(json.dumps(payload) + "\n")
+    return payload
+
+
+def test_skore_config_round_trip(tmp_path):
+    config = SkoreConfig(
+        hub_url="http://hub.test",
+        workspace="ws-1",
+        workspace_id=1,
+        api_key="secret",
+        harness="pi",
+    )
+    path = config.save(tmp_path)
+    loaded = SkoreConfig.load(tmp_path)
+    assert path.name == SKORE_FILENAME
+    assert loaded == config
+
+
+def test_skore_config_load_invalid_returns_none(tmp_path):
+    (tmp_path / SKORE_FILENAME).write_text("{ not json")
+    assert SkoreConfig.load(tmp_path) is None
+
+
+def test_skore_config_load_normalizes_legacy_claude_code_harness(tmp_path):
+    _write_skore(tmp_path, harness="claude-code")
+    loaded = SkoreConfig.load(tmp_path)
+    assert loaded is not None
+    assert loaded.harness == "claude"
+
+
+def test_ensure_gitignore_appends_entry(tmp_path):
+    ensure_gitignore_entry(tmp_path)
+    assert (tmp_path / ".gitignore").read_text().strip() == ".skore"
+
+    ensure_gitignore_entry(tmp_path)
+    assert (tmp_path / ".gitignore").read_text().count(".skore") == 1
+
+
+def test_opencode_writer_embeds_api_key(tmp_path):
+    HARNESSES["opencode"].configure(
+        HarnessContext(
+            workspace=tmp_path,
+            hub_url="http://hub.test",
+            api_key="secret-key",
+        )
+    )
+    config = json.loads((tmp_path / "opencode.json").read_text())
+    provider = config["provider"]["skore"]
+    assert config["model"] == "skore/skore-agent"
+    assert provider["options"]["baseURL"] == "http://hub.test/v1"
+    assert provider["options"]["apiKey"] == "secret-key"
+
+
+def test_agent_nonexistent_workspace_errors(tmp_path):
+    missing = tmp_path / "missing"
+    result = CliRunner().invoke(agent, ["--workspace", str(missing)])
     assert result.exit_code != 0
     assert "workspace does not exist" in result.output
 
 
-# --------------------------------------------------------------------------- #
-# install happy path (generic harness)
-# --------------------------------------------------------------------------- #
-
-
-def test_install_generic_happy_path(tmp_path, monkeypatch):
-    monkeypatch.setattr(_commands, "resolve_credential", lambda: Credential("api_key"))
-    # Resolve the hub URL without importing the (absent) skore package.
-    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda url, *a, **k: url)
+def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):
+    _write_skore(tmp_path)
+    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test")
+    monkeypatch.setattr(_commands, "detect_harnesses", lambda workspace: ["opencode"])
+    launched: list[str] = []
+    monkeypatch.setattr(
+        _commands,
+        "launch_harness",
+        lambda name, workspace, model_id=DEFAULT_MODEL_ID: launched.append(name),
+    )
 
     result = CliRunner().invoke(
-        install,
-        [
-            "--workspace",
-            str(tmp_path),
-            "--harness",
-            "generic",
-            "--hub-url",
-            "http://hub.test",
-            "--no-skills",
-        ],
+        agent,
+        ["--workspace", str(tmp_path), "--harness", "opencode"],
     )
 
     assert result.exit_code == 0, result.output
-    marker = json.loads((tmp_path / MARKER_FILENAME).read_text())
-    assert marker["harness"] == "generic"
-    assert marker["auth"] == "api_key"
-    assert marker["hub_url"] == "http://hub.test"
-    assert (tmp_path / "skore-agent.json").is_file()
+    assert launched == ["opencode"]
+    assert json.loads((tmp_path / "opencode.json").read_text())["provider"]["skore"]
 
 
-# --------------------------------------------------------------------------- #
-# _install_skills
-# --------------------------------------------------------------------------- #
-
-
-def test_install_skills_off_skips_subprocess(tmp_path, monkeypatch):
-    called = []
+def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test")
+    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
     monkeypatch.setattr(
-        _commands.subprocess, "run", lambda *a, **k: called.append((a, k))
+        _commands._client,
+        "me",
+        lambda hub_url, token: ("user-1", [_membership()]),
+    )
+    monkeypatch.setattr(
+        _commands._client,
+        "list_api_keys",
+        lambda *a, **k: [],
+    )
+    monkeypatch.setattr(
+        _commands._client,
+        "create_api_key",
+        lambda *a, **k: (42, "new-secret"),
+    )
+    monkeypatch.setattr(_commands, "detect_harnesses", lambda workspace: ["opencode"])
+    monkeypatch.setattr(
+        _commands, "launch_harness", lambda name, workspace, model_id=DEFAULT_MODEL_ID: None
     )
 
-    _commands._install_skills(tmp_path, install=False)
+    result = CliRunner().invoke(
+        agent,
+        ["--workspace", str(tmp_path), "--harness", "opencode"],
+    )
 
-    assert called == []
+    assert result.exit_code == 0, result.output
+    saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert saved["api_key"] == "new-secret"
+    assert saved["workspace"] == "ws-1"
+    assert (tmp_path / ".gitignore").read_text().strip().endswith(".skore")
 
 
-def test_install_skills_on_invokes_subprocess(tmp_path, monkeypatch):
-    called = []
+def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
+    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test")
+    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands._client,
+        "me",
+        lambda hub_url, token: ("user-1", [_membership()]),
+    )
+    monkeypatch.setattr(_commands, "_is_interactive", lambda: False)
 
-    def fake_run(argv, **kwargs):
-        called.append(argv)
-        return SimpleNamespace(returncode=0, stderr="")
+    result = CliRunner().invoke(agent, ["--workspace", str(tmp_path)])
 
-    monkeypatch.setattr(_commands.subprocess, "run", fake_run)
+    assert result.exit_code != 0
+    assert "pass --harness" in result.output
 
-    _commands._install_skills(tmp_path, install=True)
 
-    assert len(called) == 1
-    assert called[0][1:] == ["-m", "skore_cli", "skills", "install", "--all"]
+def test_resolve_api_key_name_deduplicates():
+    assert _commands._resolve_api_key_name("opencode", []) == "opencode"
+    assert _commands._resolve_api_key_name("opencode", ["opencode"]) == "opencode-2"
+    assert _commands._resolve_api_key_name("opencode", ["opencode", "opencode-2"]) == "opencode-3"

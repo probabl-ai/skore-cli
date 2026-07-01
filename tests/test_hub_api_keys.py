@@ -31,24 +31,16 @@ def _transport(handler):
 
 
 def test_require_login_token_errors_without_token(monkeypatch):
-    monkeypatch.setattr(
-        _client,
-        "_auth",
-        lambda name: SimpleNamespace(fresh_token=lambda relogin=False: None),
-    )
+    monkeypatch.setattr(_client, "ensure_login", lambda: (_ for _ in ()).throw(
+        click.ClickException("not logged in")
+    ))
     with pytest.raises(click.ClickException) as exc:
         _client.require_login_token()
     assert "not logged in" in str(exc.value)
 
 
 def test_require_login_token_returns_access_token(monkeypatch):
-    monkeypatch.setattr(
-        _client,
-        "_auth",
-        lambda name: SimpleNamespace(
-            fresh_token=lambda relogin=False: {"access_token": "abc"}
-        ),
-    )
+    monkeypatch.setattr(_client, "ensure_login", lambda: "abc")
     assert _client.require_login_token() == "abc"
 
 

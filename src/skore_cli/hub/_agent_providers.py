@@ -28,9 +28,12 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 
-@click.group("agent-provider")
-def agent_provider() -> None:
+@click.group("agent-provider", invoke_without_command=True)
+@click.pass_context
+def agent_provider(ctx) -> None:
     """Add, list, activate and remove a workspace's agent LLM providers."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
 
 
 def _resolve_target_workspace(

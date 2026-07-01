@@ -1,17 +1,11 @@
 """The ``skore hub`` command group to authenticate with a Skore Hub instance.
 
-Auth mirrors the existing Python authentication:
+Auth mirrors ``skore``'s in-process authentication:
 
 * an **API key** is user-managed through the ``SKORE_HUB_API_KEY`` environment
-  variable -- we never store it; opencode reads it from the environment;
-* otherwise an interactive **device-flow** login obtains a (short-lived) token,
-  which is the only thing we persist (so a separate opencode process can use it).
-
-The ``api-key`` subgroup (``skore hub api-key``) mints, lists and revokes
-workspace-scoped API keys against the hub, mirroring the hub UI. The
-``agent-provider`` subgroup manages a workspace's agent LLM provider config, and
-the ``workspace`` subgroup manages the lifecycle of the workspaces themselves.
-All require a prior ``skore hub login`` (a stored OAuth token).
+  variable;
+* otherwise ``skore.login()`` runs the interactive device flow and keeps the
+  token in memory for the current process.
 
 Heavy ``skore`` imports are deferred into the command callbacks so building the
 CLI (and ``--help``) never imports the ``skore`` package.
@@ -23,13 +17,10 @@ import os
 
 import rich_click as click
 
+from skore_cli._hub_auth import API_KEY_ENV, auth_kind, clear_login
 from skore_cli._skore import URI_ENV, resolve_hub_uri
 from skore_cli._skore import auth as _auth
 from skore_cli._style import console
-
-# Mirrors ``skore._plugins.hub.authentication`` env var name; kept as a local
-# literal so showing help never imports the (heavy) ``skore`` package.
-API_KEY_ENV = "SKORE_HUB_API_KEY"
 
 click.rich_click.COMMAND_GROUPS = {
     **getattr(click.rich_click, "COMMAND_GROUPS", {}),
@@ -70,7 +61,7 @@ def login(hub_url: str | None, timeout: int) -> None:
 
     With an API key (``SKORE_HUB_API_KEY``) there is nothing to do: it is
     user-managed and read from the environment. Without one, run the interactive
-    device flow and persist the resulting token locally.
+    device flow for this process.
     """
     uri = resolve_hub_uri(hub_url, _auth)
 
@@ -78,106 +69,55 @@ def login(hub_url: str | None, timeout: int) -> None:
         console.print(
             f"[skore.ok]Using the API key from[/] [bold]{API_KEY_ENV}[/] "
             f"[skore.ok]for {uri}.[/]\n"
-            "  [skore.muted]Nothing is stored; opencode reads the key from the "
+            "  [skore.muted]Nothing is stored; the key is read from the "
             "environment.[/]"
         )
         return
 
-    # No API key: fall back to the interactive OAuth device flow and persist the
-    # token (the only thing we manage -- mirrors the Python `Token` device flow).
-    store = _auth("store")
-
-    console.print(f"Logging in to [skore.path]{uri}[/] via interactive device auth.")
-    access_token, refresh_token, expires_at = _auth("token").interactive_device_login(
-        timeout=timeout
-    )
-
-    saved = store.save(
-        {
-            "uri": uri,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "expires_at": expires_at,
-        }
-    )
-    console.print(
-        f"[skore.ok]+[/] logged in to [skore.path]{uri}[/] (interactive)\n"
-        f"  [skore.muted]token -> {saved}[/]\n"
-        "[yellow]Note: this token is short-lived; re-run `skore hub login` when it "
-        f"expires. For a durable setup, prefer an API key via {API_KEY_ENV}.[/]"
-    )
+    _auth("login").login(timeout=timeout)
 
 
 @hub.command("logout")
 def logout() -> None:
-    """Revoke the interactive token on the hub and remove it locally.
+    """Clear the in-process interactive session.
 
     The API key (``SKORE_HUB_API_KEY``) is user-managed and not revoked here.
     """
-    store = _auth("store")
+    if clear_login():
+        console.print("[skore.ok]-[/] cleared the interactive session.")
+        return
 
-    token = store.load()
-    if token and token.get("access_token"):
-        post_oauth_logout = _auth("token").post_oauth_logout
-
-        try:
-            post_oauth_logout(token["access_token"], token.get("refresh_token"))
-            console.print("[skore.ok]+[/] revoked the token on the hub")
-        except Exception as error:  # noqa: BLE001 - best-effort revoke; still clear
-            console.print(
-                f"[yellow]Could not revoke the token on the hub ({error}); "
-                "removing it locally anyway.[/]"
-            )
-
-    removed = store.clear()
-    if removed:
-        console.print(f"[skore.ok]-[/] removed stored token ([skore.path]{removed}[/])")
+    if os.environ.get(API_KEY_ENV):
         console.print(
-            "  [skore.muted]An existing opencode.json still holds the now-revoked "
-            "bearer; re-run `skore hub login` then `skore agent init` to "
-            "reconnect.[/]"
-        )
-    elif os.environ.get(API_KEY_ENV):
-        console.print(
-            f"No stored token. The API key from [bold]{API_KEY_ENV}[/] is "
+            f"No interactive session. The API key from [bold]{API_KEY_ENV}[/] is "
             "user-managed; unset it yourself to stop using it."
         )
     else:
-        console.print("No stored token to remove.")
+        console.print("No interactive session to clear.")
 
 
 @hub.command("status")
 def status() -> None:
-    """Show how this machine will authenticate to the hub."""
-    store = _auth("store")
-    token_expired = _auth("token")._token_expired
-
-    has_env_key = bool(os.environ.get(API_KEY_ENV))
-    token = store.load()
+    """Show how this process will authenticate to the hub."""
+    kind = auth_kind()
 
     console.print(f"hub URI      : [skore.path]{_auth('uri').URI()}[/]")
-    if has_env_key:
+    if os.environ.get(API_KEY_ENV):
         console.print(f"API key (env): [skore.ok]set[/] ({API_KEY_ENV})")
     else:
         console.print("API key (env): [skore.muted]not set[/]")
-    if token and token.get("access_token"):
-        expires_at = token.get("expires_at", "?")
-        if token_expired(token.get("expires_at")):
-            console.print(f"token        : stored, [yellow]expired[/] ({expires_at})")
-        else:
-            console.print(f"token        : stored, [skore.ok]valid[/] ({expires_at})")
-        console.print(f"token path   : [skore.path]{store.path()}[/]")
-    else:
-        console.print("token        : [skore.muted]none[/]")
 
-    if not has_env_key and not (token and token.get("access_token")):
+    if kind == "bearer":
+        console.print("session      : [skore.ok]interactive token[/] (in memory)")
+    elif kind == "api_key":
+        console.print("session      : [skore.ok]API key[/] (from environment)")
+    else:
+        console.print("session      : [skore.muted]none[/]")
         raise click.ClickException(
             "Not authenticated. Set SKORE_HUB_API_KEY or run `skore hub login`."
         )
 
 
-# The api-key/agent-provider/workspace subgroups are attached here; their heavy
-# deps (httpx/textual) stay deferred inside their own command callbacks.
 from skore_cli.hub._agent_providers import (  # noqa: E402
     agent_provider as _agent_provider_group,
 )

@@ -1,4 +1,4 @@
-"""The single-select picker backing interactive ``skore agent init``."""
+"""The single-select picker backing interactive ``skore agent``."""
 
 from __future__ import annotations
 
@@ -7,13 +7,51 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Footer, Header, Label, RadioButton
 
+from skore_cli.app._help import HELP_BINDING, HelpScreen
 from skore_cli.skills.app._widgets import AutoRadioSet
 
-_INTRO = (
-    "Choose the agent harness to configure.\n"
-    "Detected harnesses are marked and pre-selected.\n"
-    "[reverse] ↑/↓ [/] choose  [reverse] Enter [/] confirm"
+_HARNESS_INTRO = (
+    "Choose the agent harness to launch.\n"
+    "Only harnesses installed on PATH are listed.\n"
+    "[reverse] ↑/↓ [/] choose  [reverse] Enter [/] confirm  [reverse] ? [/] help"
 )
+
+_HARNESS_HELP = """\
+Pick the local coding agent to configure and launch.
+
+Supported harnesses:
+  • Claude       — writes .claude/settings.local.json
+  • OpenCode     — writes opencode.json
+  • Pi           — writes .pi/agent/models.json
+
+Skore stores your hub credentials in .skore and selects the
+skore-agent model when the harness starts.
+
+Keys:
+  ↑/↓     move selection
+  Enter   confirm
+  Esc     cancel
+  ?       show this help
+"""
+
+_WORKSPACE_INTRO = (
+    "Choose the Skore Hub workspace to attach the agent to.\n"
+    "The agent uses this workspace's LLM provider configuration.\n"
+    "[reverse] ↑/↓ [/] choose  [reverse] Enter [/] confirm  [reverse] ? [/] help"
+)
+
+_WORKSPACE_HELP = """\
+Pick the hub workspace this project should use.
+
+Skore creates a workspace-scoped API key and saves it in
+.skore together with the workspace id.
+
+Keys:
+  ↑/↓     move selection
+  Enter   confirm
+  Esc     cancel
+  ?       show this help
+"""
 
 
 class HarnessPicker(App[str | None]):
@@ -40,6 +78,7 @@ class HarnessPicker(App[str | None]):
     BINDINGS = [
         Binding("enter", "confirm", "Confirm", priority=True),
         Binding("escape", "cancel", "Cancel"),
+        HELP_BINDING,
     ]
 
     def __init__(
@@ -56,7 +95,7 @@ class HarnessPicker(App[str | None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="picker"):
-            yield Label(_INTRO, classes="picker-intro")
+            yield Label(_HARNESS_INTRO, classes="picker-intro")
             with AutoRadioSet(id="harnesses"):
                 for index, (_, label, detected) in enumerate(self._harnesses):
                     text = f"{label}  (detected)" if detected else label
@@ -65,6 +104,9 @@ class HarnessPicker(App[str | None]):
 
     def on_mount(self) -> None:
         self.query_one("#harnesses", AutoRadioSet).select_index(self._preselect)
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen("Choose a harness", _HARNESS_HELP))
 
     def action_confirm(self) -> None:
         index = self.query_one("#harnesses", AutoRadioSet).pressed_index
@@ -77,13 +119,6 @@ class HarnessPicker(App[str | None]):
     def action_cancel(self) -> None:
         self.result = None
         self.exit()
-
-
-_WORKSPACE_INTRO = (
-    "Choose the Skore Hub workspace to attach the agent to.\n"
-    "The agent uses this workspace's LLM provider configuration.\n"
-    "[reverse] ↑/↓ [/] choose  [reverse] Enter [/] confirm"
-)
 
 
 class WorkspacePicker(App[str | None]):
@@ -110,6 +145,7 @@ class WorkspacePicker(App[str | None]):
     BINDINGS = [
         Binding("enter", "confirm", "Confirm", priority=True),
         Binding("escape", "cancel", "Cancel"),
+        HELP_BINDING,
     ]
 
     def __init__(
@@ -135,6 +171,9 @@ class WorkspacePicker(App[str | None]):
 
     def on_mount(self) -> None:
         self.query_one("#workspaces", AutoRadioSet).select_index(self._preselect)
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen("Choose a workspace", _WORKSPACE_HELP))
 
     def action_confirm(self) -> None:
         index = self.query_one("#workspaces", AutoRadioSet).pressed_index

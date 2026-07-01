@@ -28,9 +28,12 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 
-@click.group("workspace")
-def workspace() -> None:
+@click.group("workspace", invoke_without_command=True)
+@click.pass_context
+def workspace(ctx) -> None:
     """List, show, create, rename and delete hub workspaces."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
 
 
 def _role_for(ws: _client.WorkspaceInfo, user_id: str) -> str:

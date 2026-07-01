@@ -24,6 +24,7 @@ from textual.widgets import (
 )
 from textual.widgets.selection_list import Selection
 
+from skore_cli.app._help import HELP_BINDING, HelpInput, HelpScreen
 from skore_cli.skills.app._widgets import AutoRadioSet
 
 # (value, label) validity choices, mirroring the hub UI (default: 3 months).
@@ -39,8 +40,23 @@ _INTRO = (
     "Create a workspace-scoped API key.\n"
     "Pick the workspace, the permissions to grant, and a validity.\n"
     "[reverse] tab [/] next field  [reverse] ↑/↓ space [/] choose  "
-    "[reverse] enter [/] create  [reverse] esc [/] cancel"
+    "[reverse] enter [/] create  [reverse] esc [/] cancel  [reverse] ? [/] help"
 )
+
+_API_KEY_HELP = """\
+Create a workspace-scoped API key for the hub.
+
+Fill in a name, pick the workspace, grant permissions,
+and choose how long the key stays valid. The secret is
+shown only once after creation.
+
+Keys:
+  Tab       next field
+  ↑/↓ Space choose options
+  Enter     create key
+  Esc       cancel
+  ?         show this help
+"""
 
 
 @dataclass(frozen=True)
@@ -97,6 +113,7 @@ class ApiKeyForm(App[ApiKeyFormResult | None]):
         Binding("escape", "cancel", "Cancel"),
         Binding("tab", "focus_next", "Next", show=False),
         Binding("shift+tab", "focus_previous", "Previous", show=False),
+        HELP_BINDING,
     ]
 
     def __init__(
@@ -134,7 +151,7 @@ class ApiKeyForm(App[ApiKeyFormResult | None]):
             yield Label(_INTRO, classes="form-intro")
 
             yield Label("Name", classes="field-label")
-            yield Input(value=self._name, placeholder="e.g. laptop", id="name")
+            yield HelpInput(value=self._name, placeholder="e.g. laptop", id="name")
 
             yield Label("Workspace", classes="field-label")
             with AutoRadioSet(id="workspaces"):
@@ -155,6 +172,9 @@ class ApiKeyForm(App[ApiKeyFormResult | None]):
         self.query_one("#validity", AutoRadioSet).select_index(self._validity_index)
         self._populate_permissions(self._initial_permissions)
         self.query_one("#name", Input).focus()
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen("Create an API key", _API_KEY_HELP))
 
     def _current_workspace_id(self) -> int:
         index = self.query_one("#workspaces", AutoRadioSet).pressed_index
@@ -213,8 +233,19 @@ class ApiKeyForm(App[ApiKeyFormResult | None]):
 
 
 _PICKER_KEYS = (
-    "[reverse] ↑/↓ [/] choose  [reverse] enter [/] confirm  [reverse] esc [/] cancel"
+    "[reverse] ↑/↓ [/] choose  [reverse] enter [/] confirm  "
+    "[reverse] esc [/] cancel  [reverse] ? [/] help"
 )
+
+_ID_PICKER_HELP = """\
+Select one item from the list.
+
+Keys:
+  ↑/↓     move selection
+  Enter   confirm
+  Esc     cancel
+  ?       show this help
+"""
 
 
 class IdPicker(App[int | None]):
@@ -245,6 +276,7 @@ class IdPicker(App[int | None]):
     BINDINGS = [
         Binding("enter", "confirm", "Confirm", priority=True),
         Binding("escape", "cancel", "Cancel"),
+        HELP_BINDING,
     ]
 
     def __init__(
@@ -259,6 +291,9 @@ class IdPicker(App[int | None]):
         self._title = title
         self._preselect = preselect
         self.result: int | None = None
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen(self._title, _ID_PICKER_HELP))
 
     def compose(self) -> ComposeResult:
         yield Header()

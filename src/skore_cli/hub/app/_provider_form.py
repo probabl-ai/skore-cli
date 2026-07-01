@@ -25,6 +25,7 @@ from textual.widgets import (
     RadioButton,
 )
 
+from skore_cli.app._help import HELP_BINDING, HelpInput, HelpScreen
 from skore_cli.skills.app._widgets import AutoRadioSet
 
 _PROVIDER_ORDER = ["skore", "anthropic", "bedrock"]
@@ -33,8 +34,23 @@ _INTRO = (
     "Add an agent LLM provider for the workspace.\n"
     "Pick a provider; bring-your-own providers need a model (and secrets).\n"
     "[reverse] tab [/] next field  [reverse] ↑/↓ [/] choose  "
-    "[reverse] enter [/] add  [reverse] esc [/] cancel"
+    "[reverse] enter [/] add  [reverse] esc [/] cancel  [reverse] ? [/] help"
 )
+
+_PROVIDER_HELP = """\
+Register the LLM provider that powers the hub agent.
+
+Choose Skore's managed provider or bring your own Anthropic
+or Bedrock credentials. Optional fields appear based on the
+provider you pick.
+
+Keys:
+  Tab       next field
+  ↑/↓       choose options
+  Enter     add provider
+  Esc       cancel
+  ?         show this help
+"""
 
 
 @dataclass(frozen=True)
@@ -91,6 +107,7 @@ class AgentProviderForm(App[AgentProviderFormResult | None]):
         Binding("escape", "cancel", "Cancel"),
         Binding("tab", "focus_next", "Next", show=False),
         Binding("shift+tab", "focus_previous", "Previous", show=False),
+        HELP_BINDING,
     ]
 
     def __init__(
@@ -127,7 +144,7 @@ class AgentProviderForm(App[AgentProviderFormResult | None]):
             yield Label(_INTRO, classes="form-intro")
 
             yield Label("Name", classes="field-label")
-            yield Input(value=self._name, placeholder="e.g. team-anthropic", id="name")
+            yield HelpInput(value=self._name, placeholder="e.g. team-anthropic", id="name")
 
             yield Label("Provider", classes="field-label")
             with AutoRadioSet(id="provider"):
@@ -153,7 +170,7 @@ class AgentProviderForm(App[AgentProviderFormResult | None]):
                     ):
                         yield RadioButton(model, value=index == 0)
                 yield Label("Anthropic API key", classes="field-label")
-                yield Input(password=True, id="anthropic-api-key")
+                yield HelpInput(password=True, id="anthropic-api-key")
 
             with Vertical(id="bedrock-fields"):
                 yield Label("Model", classes="field-label")
@@ -163,15 +180,15 @@ class AgentProviderForm(App[AgentProviderFormResult | None]):
                     ):
                         yield RadioButton(model, value=index == 0)
                 yield Label("AWS region", classes="field-label")
-                yield Input(id="aws-region", placeholder="e.g. us-east-1")
+                yield HelpInput(id="aws-region", placeholder="e.g. us-east-1")
                 yield Label("Bedrock role ARN", classes="field-label")
-                yield Input(id="bedrock-role-arn")
+                yield HelpInput(id="bedrock-role-arn")
                 yield Label("Bedrock external id", classes="field-label")
-                yield Input(id="bedrock-external-id")
+                yield HelpInput(id="bedrock-external-id")
                 yield Label("AWS access key id", classes="field-label")
-                yield Input(id="aws-access-key-id")
+                yield HelpInput(id="aws-access-key-id")
                 yield Label("AWS secret access key", classes="field-label")
-                yield Input(password=True, id="aws-secret-access-key")
+                yield HelpInput(password=True, id="aws-secret-access-key")
 
             yield Checkbox("Activate now", value=self._activate_default, id="activate")
         yield Footer()
@@ -181,6 +198,9 @@ class AgentProviderForm(App[AgentProviderFormResult | None]):
         self.query_one("#provider", AutoRadioSet).select_index(index)
         self._show_fields(self._initial_provider)
         self.query_one("#name", Input).focus()
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen("Add an agent provider", _PROVIDER_HELP))
 
     def _current_provider(self) -> str:
         index = self.query_one("#provider", AutoRadioSet).pressed_index

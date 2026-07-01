@@ -6,6 +6,7 @@ from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from skore_cli.app._help import HELP_BINDING, HelpScreen
 from textual.widgets import Footer, Header, SelectionList
 
 from skore_cli.skills.app._widgets import SkillSelection
@@ -14,8 +15,23 @@ _FIND_INTRO = (
     "Browse the catalog and pick the workflows and individual skills you want "
     "to preview.\n"
     "[reverse] ↑/↓ [/] move  [reverse] Space [/] (de)select  "
-    "[reverse] Tab [/] switch lists  [reverse] Enter [/] show details"
+    "[reverse] Tab [/] switch lists  [reverse] Enter [/] show details  "
+    "[reverse] ? [/] help"
 )
+
+_FIND_HELP = """\
+Browse probabl-skills and pick entries to preview.
+
+Workflows bundle related skills. Use Tab to move between
+the workflow list and the skill list.
+
+Keys:
+  ↑/↓ Space move and (de)select
+  Tab       switch lists
+  Enter     show details
+  Esc       cancel
+  ?         show this help
+"""
 
 
 class ProbablSkillsFinder(App[None]):
@@ -40,6 +56,7 @@ class ProbablSkillsFinder(App[None]):
         Binding("tab", "focus_next", "Switch list", show=True),
         Binding("shift+tab", "focus_previous", "Switch list", show=True),
         Binding("escape", "cancel", "Cancel"),
+        HELP_BINDING,
     ]
 
     def __init__(self, catalog: dict[str, Any]) -> None:
@@ -54,6 +71,9 @@ class ProbablSkillsFinder(App[None]):
 
     def on_mount(self) -> None:
         self.query_one("#sel-workflows", SelectionList).focus()
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen("Find skills", _FIND_HELP))
 
     def action_confirm(self) -> None:
         selected = self.query_one(SkillSelection).selected_ids()

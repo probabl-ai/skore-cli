@@ -15,10 +15,28 @@ from skore_cli.hub import hub
 from skore_cli.skills import skills
 
 
-@click.group()
+click.rich_click.COMMAND_GROUPS = {
+    **getattr(click.rich_click, "COMMAND_GROUPS", {}),
+    "cli": [
+        {"name": "Agent", "commands": ["agent"]},
+        {"name": "Hub", "commands": ["hub"]},
+        {"name": "Skills", "commands": ["skills"]},
+    ],
+}
+
+
+@click.group(invoke_without_command=True)
+@click.pass_context
 @click.version_option(package_name="skore-cli")
-def cli() -> None:
-    """Skore command-line interface."""
+def cli(ctx) -> None:
+    """Skore command-line interface.
+
+    Use ``skore agent`` to connect a project to the Skore Hub agent,
+    ``skore hub`` to authenticate and manage workspaces, and
+    ``skore skills`` to install probabl-skills locally.
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
 
 
 cli.add_command(skills)

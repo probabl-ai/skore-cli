@@ -34,3 +34,6 @@ pixi.lock
 .idea/
 .vscode/
 .DS_Store
+
+# Skore agent credentials (project-local)
+.skore

@@ -41,7 +41,7 @@ def resolve_hub_uri(
     An explicit ``hub_url`` seeds the ``SKORE_HUB_URI`` environment variable;
     resolution then defers to ``skore``'s canonical ``URI()`` (which reads that
     env var, falling back to the public hub). This keeps ``hub login``,
-    ``agent init`` and ``agent mcp serve`` all pointing at the same hub.
+    ``agent`` and ``skore hub login`` all pointing at the same hub.
 
     ``auth_fn`` defaults to :func:`auth` but is injectable so each command can
     pass the ``_auth`` accessor that its tests monkeypatch.
