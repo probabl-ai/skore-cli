@@ -113,6 +113,10 @@ def test_launch_errors_when_binary_missing(tmp_path, monkeypatch):
         "which",
         lambda name: "/usr/bin/opencode" if name == "opencode" else None,
     )
-    monkeypatch.setattr(_harnesses.os, "execve", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        _harnesses.os,
+        "execve",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
     with pytest.raises(RuntimeError):
         _harnesses.launch_harness("opencode", tmp_path)

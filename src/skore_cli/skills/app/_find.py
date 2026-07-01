@@ -6,9 +6,9 @@ from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from skore_cli.app._help import HELP_BINDING, HelpScreen
 from textual.widgets import Footer, Header, SelectionList
 
+from skore_cli.app._help import HELP_BINDING, HelpScreen
 from skore_cli.skills.app._widgets import SkillSelection
 
 _FIND_INTRO = (

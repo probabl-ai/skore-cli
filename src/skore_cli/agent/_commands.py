@@ -13,8 +13,8 @@ from skore_cli._skore import auth as _auth
 from skore_cli._style import console
 from skore_cli.agent._harnesses import (
     DEFAULT_MODEL_ID,
-    HARNESSES,
     HARNESS_NAMES,
+    HARNESSES,
     HarnessContext,
     detect_harnesses,
     launch_harness,
@@ -59,9 +59,7 @@ def _pick_harness(workspace: Path) -> str:
             f"{', '.join(HARNESS_NAMES)}."
         )
     rows = [
-        (name, HARNESSES[name].label, True)
-        for name in HARNESSES
-        if name in detected
+        (name, HARNESSES[name].label, True) for name in HARNESSES if name in detected
     ]
     app = HarnessPicker(rows, preselect=0)
     app.run()
@@ -250,9 +248,7 @@ def agent(
 
     harness = HARNESSES[harness_name]
     if not harness.detect(workspace):
-        raise click.ClickException(
-            f"{harness.label} is not installed or not on PATH."
-        )
+        raise click.ClickException(f"{harness.label} is not installed or not on PATH.")
 
     if config.harness != harness_name:
         config = SkoreConfig(

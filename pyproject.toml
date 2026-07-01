@@ -164,6 +164,8 @@ ignore_missing_imports = true
 module = [
   "rich_click.*",
   "textual.*",
+  "httpx",
+  "httpx.*",
 ]
 
 [tool.ty.environment]

@@ -49,7 +49,9 @@ class SkoreConfig:
     def save(self, path: Path) -> Path:
         """Write this config to ``path/.skore`` and return the file path."""
         file_path = path / SKORE_FILENAME
-        payload = {key: value for key, value in asdict(self).items() if value is not None}
+        payload = {
+            key: value for key, value in asdict(self).items() if value is not None
+        }
         file_path.write_text(json.dumps(payload, indent=2) + "\n")
         return file_path
 

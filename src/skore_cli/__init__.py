@@ -14,7 +14,6 @@ from skore_cli.agent import agent
 from skore_cli.hub import hub
 from skore_cli.skills import skills
 
-
 click.rich_click.COMMAND_GROUPS = {
     **getattr(click.rich_click, "COMMAND_GROUPS", {}),
     "cli": [

@@ -20,6 +20,7 @@ from textual.widgets import (
     Input,
     Label,
     RadioButton,
+    RadioSet,
     SelectionList,
 )
 from textual.widgets.selection_list import Selection
@@ -193,7 +194,7 @@ class ApiKeyForm(App[ApiKeyFormResult | None]):
         if options:
             permissions.add_options(options)
 
-    def on_radio_set_changed(self, event: AutoRadioSet.Changed) -> None:
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         # Switching workspace changes which permissions are grantable; rebuild
         # the list (keeping any still-grantable selections).
         if event.radio_set.id == "workspaces":

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Protocol, cast
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -12,12 +14,16 @@ from textual.widgets import Footer, Input, Label, Static
 HELP_BINDING = Binding("question_mark", "show_help", "Help", priority=True)
 
 
+class _HelpApp(Protocol):
+    def action_show_help(self) -> None: ...
+
+
 class HelpInput(Input):
     """Input that opens the app help screen instead of inserting ``?``."""
 
     async def _on_key(self, event: Key) -> None:
         if event.key == "question_mark":
-            self.app.action_show_help()
+            cast(_HelpApp, self.app).action_show_help()
             event.prevent_default()
             event.stop()
             return
@@ -63,5 +69,5 @@ class HelpScreen(ModalScreen[None]):
             yield Static(self._body, classes="help-body")
         yield Footer()
 
-    def action_dismiss(self) -> None:
-        self.dismiss()
+    async def action_dismiss(self, result: None = None) -> None:
+        self.dismiss(result)

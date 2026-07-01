@@ -23,6 +23,7 @@ from textual.widgets import (
     Input,
     Label,
     RadioButton,
+    RadioSet,
 )
 
 from skore_cli.app._help import HELP_BINDING, HelpInput, HelpScreen
@@ -144,7 +145,9 @@ class AgentProviderForm(App[AgentProviderFormResult | None]):
             yield Label(_INTRO, classes="form-intro")
 
             yield Label("Name", classes="field-label")
-            yield HelpInput(value=self._name, placeholder="e.g. team-anthropic", id="name")
+            yield HelpInput(
+                value=self._name, placeholder="e.g. team-anthropic", id="name"
+            )
 
             yield Label("Provider", classes="field-label")
             with AutoRadioSet(id="provider"):
@@ -212,7 +215,7 @@ class AgentProviderForm(App[AgentProviderFormResult | None]):
         for name in _PROVIDER_ORDER:
             self.query_one(f"#{name}-fields", Vertical).display = name == provider
 
-    def on_radio_set_changed(self, event: AutoRadioSet.Changed) -> None:
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         if event.radio_set.id == "provider":
             self._show_fields(self._current_provider())
 

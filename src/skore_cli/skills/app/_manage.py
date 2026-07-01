@@ -6,8 +6,9 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Footer, Header, Label, SelectionList
-from skore_cli.app._help import HELP_BINDING, HelpScreen
 from textual.widgets.selection_list import Selection
+
+from skore_cli.app._help import HELP_BINDING, HelpScreen
 
 _INTRO = (
     "Select the installed skills to manage.\n"

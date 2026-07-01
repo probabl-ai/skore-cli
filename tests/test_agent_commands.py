@@ -6,10 +6,14 @@ import json
 
 from click.testing import CliRunner
 
-from skore_cli.agent import _commands, _harnesses
+from skore_cli.agent import _commands
 from skore_cli.agent._commands import agent
-from skore_cli.agent._harnesses import HARNESSES, HarnessContext, DEFAULT_MODEL_ID
-from skore_cli.agent._skore_file import SKORE_FILENAME, SkoreConfig, ensure_gitignore_entry
+from skore_cli.agent._harnesses import DEFAULT_MODEL_ID, HARNESSES, HarnessContext
+from skore_cli.agent._skore_file import (
+    SKORE_FILENAME,
+    SkoreConfig,
+    ensure_gitignore_entry,
+)
 from skore_cli.hub import _client
 
 
@@ -92,7 +96,9 @@ def test_agent_nonexistent_workspace_errors(tmp_path):
 
 def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):
     _write_skore(tmp_path)
-    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test")
+    monkeypatch.setattr(
+        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
+    )
     monkeypatch.setattr(_commands, "detect_harnesses", lambda workspace: ["opencode"])
     launched: list[str] = []
     monkeypatch.setattr(
@@ -112,7 +118,9 @@ def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):
 
 
 def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
-    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test")
+    monkeypatch.setattr(
+        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
+    )
     monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
     monkeypatch.setattr(
         _commands._client,
@@ -131,7 +139,9 @@ def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(_commands, "detect_harnesses", lambda workspace: ["opencode"])
     monkeypatch.setattr(
-        _commands, "launch_harness", lambda name, workspace, model_id=DEFAULT_MODEL_ID: None
+        _commands,
+        "launch_harness",
+        lambda name, workspace, model_id=DEFAULT_MODEL_ID: None,
     )
 
     result = CliRunner().invoke(
@@ -147,7 +157,9 @@ def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
 
 
 def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
-    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test")
+    monkeypatch.setattr(
+        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
+    )
     monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
     monkeypatch.setattr(
         _commands._client,
@@ -165,4 +177,7 @@ def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
 def test_resolve_api_key_name_deduplicates():
     assert _commands._resolve_api_key_name("opencode", []) == "opencode"
     assert _commands._resolve_api_key_name("opencode", ["opencode"]) == "opencode-2"
-    assert _commands._resolve_api_key_name("opencode", ["opencode", "opencode-2"]) == "opencode-3"
+    assert (
+        _commands._resolve_api_key_name("opencode", ["opencode", "opencode-2"])
+        == "opencode-3"
+    )

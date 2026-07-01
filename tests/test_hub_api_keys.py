@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC
-from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -31,9 +30,11 @@ def _transport(handler):
 
 
 def test_require_login_token_errors_without_token(monkeypatch):
-    monkeypatch.setattr(_client, "ensure_login", lambda: (_ for _ in ()).throw(
-        click.ClickException("not logged in")
-    ))
+    monkeypatch.setattr(
+        _client,
+        "ensure_login",
+        lambda: (_ for _ in ()).throw(click.ClickException("not logged in")),
+    )
     with pytest.raises(click.ClickException) as exc:
         _client.require_login_token()
     assert "not logged in" in str(exc.value)

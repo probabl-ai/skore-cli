@@ -96,7 +96,7 @@ def test_load_plugins_accepts_zero_arg_callable(monkeypatch):
         ...
 
     # The loaded object is a factory returning the command.
-    _patch_entry_points(monkeypatch, [_FakeEntryPoint("made", lambda: (lambda: made))])
+    _patch_entry_points(monkeypatch, [_FakeEntryPoint("made", lambda: lambda: made)])
     group = _group()
     _plugins.load_plugins(group)
 
@@ -120,7 +120,7 @@ def test_load_plugins_survives_load_error(monkeypatch, capsys):
 
 def test_load_plugins_skips_non_command(monkeypatch, capsys):
     _patch_entry_points(
-        monkeypatch, [_FakeEntryPoint("weird", lambda: (lambda: "not-a-command"))]
+        monkeypatch, [_FakeEntryPoint("weird", lambda: lambda: "not-a-command")]
     )
     group = _group()
 

@@ -158,7 +158,9 @@ def _launch_pi(workspace: Path, *, model_id: str) -> None:
     )
 
 
-def _exec_harness(name: str, argv: list[str], *, env: dict[str, str] | None = None) -> None:
+def _exec_harness(
+    name: str, argv: list[str], *, env: dict[str, str] | None = None
+) -> None:
     executable = shutil.which(argv[0])
     if executable is None:
         raise RuntimeError(f"{name} is not installed or not on PATH.")
