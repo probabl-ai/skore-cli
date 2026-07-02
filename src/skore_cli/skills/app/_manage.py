@@ -8,11 +8,23 @@ from textual.containers import Vertical
 from textual.widgets import Footer, Header, Label, SelectionList
 from textual.widgets.selection_list import Selection
 
+from skore_cli.app._help import HELP_BINDING, HelpScreen
+
 _INTRO = (
     "Select the installed skills to manage.\n"
     "[reverse] ↑/↓ [/] move  [reverse] Space [/] (de)select  "
-    "[reverse] Enter [/] confirm"
+    "[reverse] Enter [/] confirm  [reverse] ? [/] help"
 )
+
+_MANAGE_HELP = """\
+Select installed skills to update or remove.
+
+Keys:
+  ↑/↓ Space move and (de)select
+  Enter     confirm
+  Esc       cancel
+  ?         show this help
+"""
 
 
 class InstalledSkillsPicker(App[list[str] | None]):
@@ -41,6 +53,7 @@ class InstalledSkillsPicker(App[list[str] | None]):
     BINDINGS = [
         Binding("enter", "confirm", "Confirm", priority=True),
         Binding("escape", "cancel", "Cancel"),
+        HELP_BINDING,
     ]
 
     def __init__(self, skill_ids: list[str], *, title: str) -> None:
@@ -64,6 +77,9 @@ class InstalledSkillsPicker(App[list[str] | None]):
 
     def on_mount(self) -> None:
         self.query_one("#sel-installed", SelectionList).focus()
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen(self._title, _MANAGE_HELP))
 
     def action_confirm(self) -> None:
         selected = list(self.query_one("#sel-installed", SelectionList).selected)

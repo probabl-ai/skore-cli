@@ -27,6 +27,7 @@ from skore_cli.skills.app import (
 SIDECAR = ".skore-skill.json"
 
 click.rich_click.COMMAND_GROUPS = {
+    **getattr(click.rich_click, "COMMAND_GROUPS", {}),
     "cli skills": [
         {"name": "Discover", "commands": ["find", "list"]},
         {"name": "Manage", "commands": ["install", "update", "remove"]},

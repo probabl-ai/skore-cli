@@ -16,6 +16,7 @@ from textual.widgets import (
     TabPane,
 )
 
+from skore_cli.app._help import HELP_BINDING, HelpScreen
 from skore_cli.skills._agents import AGENT_NAMES, DEFAULT_AGENT
 from skore_cli.skills.app._widgets import AutoRadioSet, SkillSelection
 
@@ -37,8 +38,23 @@ _SCOPE_INTRO = (
     "Project (local) installs into the current repository only.\n"
     "User (global) installs into your home directory so every project can use "
     "the skills.\n"
-    "[reverse] ↑/↓ [/] choose  [reverse] Enter [/] confirm"
+    "[reverse] ↑/↓ [/] choose  [reverse] Enter [/] confirm  [reverse] ? [/] help"
 )
+
+_INSTALL_HELP = """\
+Install probabl-skills in three steps:
+
+1. Pick workflows and/or individual skills
+2. Choose the target agent directory
+3. Choose project-local or global scope
+
+Keys:
+  ↑/↓ Space move and (de)select
+  Tab       switch fields or wizard tabs
+  Enter     confirm step
+  Esc       cancel
+  ?         show this help
+"""
 
 
 class ProbablSkillsInstaller(App[None]):
@@ -67,6 +83,7 @@ class ProbablSkillsInstaller(App[None]):
         Binding("tab", "focus_next", "Switch list", show=True),
         Binding("shift+tab", "focus_previous", "Switch list", show=True),
         Binding("escape", "cancel", "Cancel"),
+        HELP_BINDING,
     ]
 
     def __init__(
@@ -109,6 +126,9 @@ class ProbablSkillsInstaller(App[None]):
 
     def on_mount(self) -> None:
         self.query_one("#sel-workflows", SelectionList).focus()
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen("Install skills", _INSTALL_HELP))
 
     def _selected_ids(self) -> list[str]:
         return self.query_one(SkillSelection).selected_ids()

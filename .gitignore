@@ -163,7 +163,9 @@ cython_debug/
 #.idea/
 
 .DS_Store
-*.datamander
+
+# Skore agent credentials (project-local)
+.skore
 
 # Visual studio code
 .vscode

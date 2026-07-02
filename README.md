@@ -2,10 +2,12 @@
 
 Command-line interface for [skore](https://github.com/probabl-ai/skore).
 
-`skore-cli` lets you discover, install and manage [Agent
-Skills](https://agentskills.io) for AI coding agents (Claude Code, Cursor,
-Codex, Gemini, and the cross-client `.agents/` convention) directly from your
-terminal.
+`skore-cli` installs a single `skore` command with two areas:
+
+- **skills** — discover, install and manage [Agent Skills](https://agentskills.io)
+  from the [probabl-ai/skills](https://github.com/probabl-ai/skills) catalog
+- **agent** — connect a project to the Skore Hub agent, write harness config
+  and launch a local coding agent
 
 ## Installation
 
@@ -13,17 +15,39 @@ terminal.
 pip install skore-cli
 ```
 
+The base install is batteries-included: it bundles the `agent` feature (so it
+pulls in `skore`). No extras are required.
+
 ## Usage
 
-The package installs a `skore` command exposing a `skills` group:
+### Skills
+
+Install skills into the current project by default. Pass `--global`/`-g` for a
+user-wide install and `--agent`/`-a` to target specific agents (`agents`,
+`claude-code`, `cursor`, `codex`, `gemini`).
 
 ```bash
-skore skills find          # search the catalog interactively
+skore skills find          # browse the catalog interactively
 skore skills list          # list installed skills
 skore skills install       # install skills (interactive or by id)
 skore skills update        # update installed skills
 skore skills remove        # remove installed skills
 ```
 
-Skills are installed into the current project by default; pass `--global`/`-g`
-to target the user directory, and `--agent`/`-a` to select specific agents.
+### Agent
+
+On the first run, `skore agent` logs in when needed, lets you pick a workspace
+and harness, creates a workspace API key, writes the harness configuration and
+launches the agent. Supported harnesses: **Claude**, **OpenCode** and **Pi**
+(must be on `PATH`). Later runs reuse `.skore` in the project directory
+(gitignored). Use `SKORE_HUB_URI` (or `--hub-url`) to point at a non-default hub.
+
+```bash
+skore agent
+skore agent --harness claude    # non-interactive harness choice
+skore agent --workspace ./myapp # configure another project directory
+```
+
+## License
+
+MIT
