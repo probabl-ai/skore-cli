@@ -1,5 +1,11 @@
 # skore-cli
 
+[![PyPI](https://img.shields.io/pypi/v/skore-cli)](https://pypi.org/project/skore-cli/)
+[![Python versions](https://img.shields.io/pypi/pyversions/skore-cli)](https://pypi.org/project/skore-cli/)
+[![Tests](https://github.com/probabl-ai/skore-cli/actions/workflows/tests.yml/badge.svg)](https://github.com/probabl-ai/skore-cli/actions/workflows/tests.yml)
+[![Coverage](https://codecov.io/gh/probabl-ai/skore-cli/branch/main/graph/badge.svg)](https://codecov.io/gh/probabl-ai/skore-cli)
+[![License](https://img.shields.io/pypi/l/skore-cli)](https://github.com/probabl-ai/skore-cli/blob/main/LICENSE)
+
 Command-line interface for [skore](https://github.com/probabl-ai/skore).
 
 `skore-cli` installs a single `skore` command with two areas:
