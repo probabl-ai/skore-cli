@@ -28,7 +28,6 @@ venv/
 
 # pixi
 .pixi/
-pixi.lock
 
 # IDE / OS
 .idea/
