@@ -57,9 +57,7 @@ def ensure_login(*, timeout: int = 600) -> str:
 
     token = bearer_token()
     if not token:
-        raise click.ClickException(
-            "not logged in; run `skore hub login` or `skore agent` again."
-        )
+        raise click.ClickException("not logged in; run `skore agent` again.")
     return token
 
 

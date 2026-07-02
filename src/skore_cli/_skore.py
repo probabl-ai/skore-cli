@@ -1,9 +1,9 @@
-"""Lazy access to the (heavy, optional) ``skore`` package for hub/agent commands.
+"""Lazy access to the (heavy, optional) ``skore`` package for the agent command.
 
-The ``hub`` and ``agent`` command groups reuse the authentication machinery that
-lives in ``skore`` (``skore._plugins.hub.authentication``). Importing it is
-expensive and only needed when a command actually runs, so it is deferred here
-and surfaced as a friendly error when ``skore`` is not installed.
+The ``agent`` command reuses the authentication machinery that lives in
+``skore`` (``skore._plugins.hub.authentication``). Importing it is expensive and
+only needed when a command actually runs, so it is deferred here and surfaced as
+a friendly error when ``skore`` is not installed.
 """
 
 from __future__ import annotations
@@ -36,12 +36,11 @@ def auth(submodule: str) -> ModuleType:
 def resolve_hub_uri(
     hub_url: str | None, auth_fn: Callable[[str], ModuleType] = auth
 ) -> str:
-    """Resolve the hub base URL exactly like ``skore hub login``.
+    """Resolve the hub base URL.
 
     An explicit ``hub_url`` seeds the ``SKORE_HUB_URI`` environment variable;
     resolution then defers to ``skore``'s canonical ``URI()`` (which reads that
-    env var, falling back to the public hub). This keeps ``hub login``,
-    ``agent`` and ``skore hub login`` all pointing at the same hub.
+    env var, falling back to the public hub).
 
     ``auth_fn`` defaults to :func:`auth` but is injectable so each command can
     pass the ``_auth`` accessor that its tests monkeypatch.

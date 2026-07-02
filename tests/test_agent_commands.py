@@ -7,7 +7,7 @@ import re
 
 from click.testing import CliRunner
 
-from skore_cli.agent import _commands, _harnesses
+from skore_cli.agent import _client, _commands, _harnesses
 from skore_cli.agent._commands import agent
 from skore_cli.agent._harnesses import DEFAULT_MODEL_ID, HARNESSES, HarnessContext
 from skore_cli.agent._skore_file import (
@@ -15,7 +15,6 @@ from skore_cli.agent._skore_file import (
     SkoreConfig,
     ensure_gitignore_entry,
 )
-from skore_cli.hub import _client
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 

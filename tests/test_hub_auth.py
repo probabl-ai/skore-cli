@@ -1,4 +1,4 @@
-"""Tests for ``_hub_auth`` and hub client login gating."""
+"""Tests for ``_hub_auth`` login gating."""
 
 from __future__ import annotations
 

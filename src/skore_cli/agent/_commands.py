@@ -11,6 +11,7 @@ from skore_cli._hub_auth import ensure_login
 from skore_cli._skore import URI_ENV, resolve_hub_uri
 from skore_cli._skore import auth as _auth
 from skore_cli._style import console
+from skore_cli.agent import _client
 from skore_cli.agent._harnesses import (
     DEFAULT_MODEL_ID,
     HARNESS_NAMES,
@@ -20,7 +21,6 @@ from skore_cli.agent._harnesses import (
     launch_harness,
 )
 from skore_cli.agent._skore_file import SkoreConfig, ensure_gitignore_entry
-from skore_cli.hub import _client
 
 PROJECT_PERMISSIONS = (
     "create:project",
@@ -153,7 +153,7 @@ def _resolve_membership(
     default=None,
     help=(
         "Base URL of the hub (e.g. http://127.0.0.1:8000). Defaults to the "
-        f"{URI_ENV} env var or the public hub, like `skore hub login`."
+        f"{URI_ENV} env var or the public hub."
     ),
 )
 @click.option(

@@ -13,7 +13,7 @@ from skore_cli import _plugins, _skore
 def test_cli_exposes_builtin_commands():
     from skore_cli import cli
 
-    assert {"skills", "hub", "agent"} <= set(cli.commands)
+    assert {"skills", "agent"} <= set(cli.commands)
 
 
 # --------------------------------------------------------------------------- #

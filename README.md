@@ -2,12 +2,10 @@
 
 Command-line interface for [skore](https://github.com/probabl-ai/skore).
 
-`skore-cli` installs a single `skore` command with three areas:
+`skore-cli` installs a single `skore` command with two areas:
 
 - **skills** — discover, install and manage [Agent Skills](https://agentskills.io)
   from the [probabl-ai/skills](https://github.com/probabl-ai/skills) catalog
-- **hub** — authenticate with a Skore Hub instance and manage workspaces, API
-  keys and agent providers
 - **agent** — connect a project to the Skore Hub agent, write harness config
   and launch a local coding agent
 
@@ -17,8 +15,8 @@ Command-line interface for [skore](https://github.com/probabl-ai/skore).
 pip install skore-cli
 ```
 
-The base install is batteries-included: it bundles the `hub` and `agent`
-features (so it pulls in `skore`). No extras are required.
+The base install is batteries-included: it bundles the `agent` feature (so it
+pulls in `skore`). No extras are required.
 
 ## Usage
 
@@ -36,26 +34,13 @@ skore skills update        # update installed skills
 skore skills remove        # remove installed skills
 ```
 
-### Hub
-
-Authenticate with the hub via `skore hub login` (interactive device flow) or by
-setting `SKORE_HUB_API_KEY`. Use `SKORE_HUB_URI` to point at a non-default hub.
-
-```bash
-skore hub login
-skore hub status
-skore hub api-key create   # workspace-scoped API keys
-skore hub workspace list   # workspaces
-skore hub agent-provider list
-```
-
 ### Agent
 
 On the first run, `skore agent` logs in when needed, lets you pick a workspace
 and harness, creates a workspace API key, writes the harness configuration and
 launches the agent. Supported harnesses: **Claude**, **OpenCode** and **Pi**
 (must be on `PATH`). Later runs reuse `.skore` in the project directory
-(gitignored).
+(gitignored). Use `SKORE_HUB_URI` (or `--hub-url`) to point at a non-default hub.
 
 ```bash
 skore agent

@@ -32,8 +32,8 @@ dependencies = [
   "rich>=14.2",
   "rich-click>=1.9",
   "textual",
-  # The `hub` and `agent` commands reuse skore's authentication machinery; the
-  # `hub api-key` commands call the hub identity API directly with httpx.
+  # The `agent` command reuses skore's authentication machinery and calls the
+  # hub identity API directly with httpx.
   "skore[hub]",
   "httpx",
 ]
