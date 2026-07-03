@@ -124,9 +124,7 @@ def test_launch_errors_when_binary_missing(tmp_path, monkeypatch):
 
 def test_claude_config_matches_hub_ui(tmp_path):
     HARNESSES["claude"].configure(_ctx(tmp_path))
-    config = json.loads(
-        (tmp_path / ".claude" / "settings.local.json").read_text()
-    )
+    config = json.loads((tmp_path / ".claude" / "settings.local.json").read_text())
     env = config["env"]
     assert env["ANTHROPIC_BASE_URL"] == "http://hub.test"
     assert env["ANTHROPIC_AUTH_TOKEN"] == "secret-key"
@@ -185,9 +183,7 @@ def test_exec_harness_errors_when_executable_missing(monkeypatch):
 def test_exec_harness_invokes_execve(monkeypatch):
     recorded: dict[str, object] = {}
 
-    monkeypatch.setattr(
-        _harnesses.shutil, "which", lambda cmd: f"/usr/bin/{cmd}"
-    )
+    monkeypatch.setattr(_harnesses.shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
 
     def fake_execve(executable, argv, env):
         recorded["executable"] = executable

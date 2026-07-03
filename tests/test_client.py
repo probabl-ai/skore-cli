@@ -169,9 +169,7 @@ def test_list_api_keys_parses_metadata():
             created_at="2024-01-01",
             expires_at=None,
         ),
-        ApiKeyInfo(
-            id=2, name=None, workspace_id=8, created_at=None, expires_at=None
-        ),
+        ApiKeyInfo(id=2, name=None, workspace_id=8, created_at=None, expires_at=None),
     ]
 
 

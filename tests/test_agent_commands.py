@@ -437,9 +437,7 @@ def test_agent_no_memberships_errors(tmp_path, monkeypatch):
         _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
     )
     monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [])
-    )
+    monkeypatch.setattr(_commands._client, "me", lambda hub_url, token: ("user-1", []))
 
     result = CliRunner().invoke(
         agent, ["--workspace", str(tmp_path), "--harness", "opencode"]
