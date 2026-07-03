@@ -78,6 +78,12 @@ skore-cli = { path = ".", editable = true }
 [tool.pixi.feature.test.tasks]
 tests = "pytest tests --cov=skore_cli --cov-report=xml"
 
+[tool.pixi.feature.lint.dependencies]
+pre-commit = "*"
+
+[tool.pixi.feature.lint.tasks]
+lint = "pre-commit run --all-files"
+
 [tool.pixi.feature.py311.dependencies]
 python = "3.11.*"
 
@@ -95,6 +101,7 @@ test-py311 = ["test", "py311"]
 test-py312 = ["test", "py312"]
 test-py313 = ["test", "py313"]
 test-py314 = ["test", "py314"]
+lint = ["lint"]
 
 [tool.pytest.ini_options]
 addopts = [

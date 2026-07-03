@@ -62,3 +62,59 @@ def test_ensure_login_rejects_env_api_key(monkeypatch):
     )
     with pytest.raises(click.ClickException):
         _hub_auth.ensure_login()
+
+
+def test_auth_kind_none_when_headers_have_no_known_key(monkeypatch):
+    monkeypatch.delenv("SKORE_HUB_API_KEY", raising=False)
+    monkeypatch.setattr(_hub_auth, "_auth", _make_login(credentials=lambda: {}))
+    assert _hub_auth.auth_kind() == "none"
+
+
+def test_auth_kind_api_key_from_header(monkeypatch):
+    monkeypatch.setattr(
+        _hub_auth, "_auth", _make_login(credentials=lambda: {"X-API-Key": "x"})
+    )
+    assert _hub_auth.auth_kind() == "api_key"
+
+
+def test_bearer_token_none_without_credentials(monkeypatch):
+    monkeypatch.setattr(_hub_auth, "_auth", _make_login())
+    assert _hub_auth.bearer_token() is None
+
+
+def test_bearer_token_none_when_not_a_bearer(monkeypatch):
+    monkeypatch.setattr(
+        _hub_auth, "_auth", _make_login(credentials=lambda: {"X-API-Key": "x"})
+    )
+    assert _hub_auth.bearer_token() is None
+
+
+def test_ensure_login_skips_login_when_already_authenticated(monkeypatch):
+    monkeypatch.delenv("SKORE_HUB_API_KEY", raising=False)
+    auth = _make_login(credentials=_TokenCreds("tok"))
+    monkeypatch.setattr(_hub_auth, "_auth", auth)
+    assert _hub_auth.ensure_login() == "tok"
+    assert auth("login").login_calls == 0
+
+
+def test_ensure_login_raises_when_token_missing(monkeypatch):
+    monkeypatch.delenv("SKORE_HUB_API_KEY", raising=False)
+    # Credentials present but with no bearer token: auth_kind is "none",
+    # login is skipped, and bearer_token() returns None.
+    monkeypatch.setattr(
+        _hub_auth, "_auth", _make_login(credentials=lambda: {"Cookie": "x"})
+    )
+    with pytest.raises(click.ClickException, match="not logged in"):
+        _hub_auth.ensure_login()
+
+
+def test_clear_login_returns_false_without_session(monkeypatch):
+    monkeypatch.setattr(_hub_auth, "_auth", _make_login())
+    assert _hub_auth.clear_login() is False
+
+
+def test_clear_login_drops_session(monkeypatch):
+    auth = _make_login(credentials=_TokenCreds("tok"))
+    monkeypatch.setattr(_hub_auth, "_auth", auth)
+    assert _hub_auth.clear_login() is True
+    assert auth("login").credentials is None
