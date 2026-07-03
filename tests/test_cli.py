@@ -16,6 +16,19 @@ def test_cli_exposes_builtin_commands():
     assert {"skills", "agent"} <= set(cli.commands)
 
 
+def test_cli_without_subcommand_prints_help():
+    from click.testing import CliRunner
+
+    from skore_cli import cli
+
+    result = CliRunner().invoke(cli, [])
+
+    assert result.exit_code == 0
+    assert "Usage" in result.output
+    assert "agent" in result.output
+    assert "skills" in result.output
+
+
 # --------------------------------------------------------------------------- #
 # _skore.auth
 # --------------------------------------------------------------------------- #
