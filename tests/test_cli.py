@@ -16,20 +16,115 @@ def test_cli_exposes_builtin_commands():
     assert {"skills", "agent"} <= set(cli.commands)
 
 
-def test_cli_without_subcommand_prints_banner_before_help():
+def test_cli_without_subcommand_shows_plain_help():
     from click.testing import CliRunner
 
     from skore_cli import cli
-    from skore_cli._style import SKORE_BANNER
 
     result = CliRunner().invoke(cli, [])
 
     assert result.exit_code == 0
-    banner = SKORE_BANNER.rstrip("\n")
-    assert banner in result.output
-    assert result.output.index(banner) < result.output.index("Usage")
+    assert "Skore command-line interface." in result.output
     assert "agent" in result.output
     assert "skills" in result.output
+    assert "Quick start:" in result.output
+
+
+# --------------------------------------------------------------------------- #
+# Agent detection: help output
+# --------------------------------------------------------------------------- #
+
+_AGENT_ENV_VARS = (
+    "CLAUDECODE",
+    "CURSOR_AGENT",
+    "GEMINI_CLI",
+    "CODEX_SANDBOX",
+    "PI_CODING_AGENT",
+    "OPENCODE_CLIENT",
+    "CI",
+)
+
+
+def _clear_agent_envs(monkeypatch):
+    for var in _AGENT_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_cli_help_no_agent_shows_generic_quick_start(monkeypatch):
+    from click.testing import CliRunner
+
+    from skore_cli import cli
+
+    _clear_agent_envs(monkeypatch)
+    result = CliRunner().invoke(cli, [])
+
+    assert result.exit_code == 0
+    assert "Detected:" not in result.output
+    assert "Install all skills" in result.output
+    assert "Configure and launch" in result.output
+
+
+def test_cli_help_claude_code_detected(monkeypatch):
+    from click.testing import CliRunner
+
+    from skore_cli import cli
+
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    result = CliRunner().invoke(cli, [])
+
+    assert result.exit_code == 0
+    assert "Detected: Claude Code" in result.output
+    assert "Skills target: .claude/skills" in result.output
+    assert "Harness: Claude" in result.output
+    assert ".claude/skills" in result.output
+    assert "Configure Claude with the Skore Hub provider" in result.output
+
+
+def test_cli_help_cursor_detected(monkeypatch):
+    from click.testing import CliRunner
+
+    from skore_cli import cli
+
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("CURSOR_AGENT", "1")
+    result = CliRunner().invoke(cli, [])
+
+    assert result.exit_code == 0
+    assert "Detected: Cursor" in result.output
+    assert "Skills target: .cursor/skills" in result.output
+    assert "Harness:" not in result.output
+
+
+def test_cli_help_opencode_detected(monkeypatch):
+    from click.testing import CliRunner
+
+    from skore_cli import cli
+
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("OPENCODE_CLIENT", "1")
+    result = CliRunner().invoke(cli, [])
+
+    assert result.exit_code == 0
+    assert "Detected: OpenCode" in result.output
+    assert "Harness: OpenCode" in result.output
+    assert "Skills target: .agents/skills" in result.output
+    assert "Configure OpenCode with the Skore Hub provider" in result.output
+
+
+def test_cli_help_pi_detected(monkeypatch):
+    from click.testing import CliRunner
+
+    from skore_cli import cli
+
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("PI_CODING_AGENT", "true")
+    result = CliRunner().invoke(cli, [])
+
+    assert result.exit_code == 0
+    assert "Detected: Pi" in result.output
+    assert "Harness: Pi" in result.output
+    assert "Skills target: .agents/skills" in result.output
 
 
 def test_cli_subcommand_help_omits_banner():

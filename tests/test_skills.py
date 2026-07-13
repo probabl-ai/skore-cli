@@ -8,7 +8,6 @@ from skore_cli import cli
 from skore_cli.skills import _commands as _skills
 from skore_cli.skills._catalog import fetch_release
 from skore_cli.skills._commands import (
-    ProbablSkillsFinder,
     ProbablSkillsInstaller,
 )
 from skore_cli.skills.app._widgets import AutoRadioSet
@@ -127,6 +126,7 @@ def test_install_global_without_selection_errors(release, workspace):
 
 
 def test_install_interactive_selection(release, workspace, monkeypatch):
+    monkeypatch.setattr(_skills, "is_non_interactive", lambda: False)
     monkeypatch.setattr(
         _skills,
         "_interactive_install_options",
@@ -146,6 +146,7 @@ def test_install_interactive_selection(release, workspace, monkeypatch):
 
 
 def test_install_interactive_agent_and_global(release, workspace, monkeypatch):
+    monkeypatch.setattr(_skills, "is_non_interactive", lambda: False)
     monkeypatch.setattr(
         _skills,
         "_interactive_install_options",
@@ -164,6 +165,7 @@ def test_install_interactive_agent_and_global(release, workspace, monkeypatch):
 
 
 def test_install_interactive_cancelled(release, workspace, monkeypatch):
+    monkeypatch.setattr(_skills, "is_non_interactive", lambda: False)
     monkeypatch.setattr(
         _skills,
         "_interactive_install_options",
@@ -186,17 +188,6 @@ def _fake_app(result):
             return None
 
     return _FakeApp
-
-
-def _fake_find_app(result):
-    class _FakeFindApp:
-        def __init__(self, catalog):
-            self.result = result
-
-        def run(self):
-            return None
-
-    return _FakeFindApp
 
 
 def _fake_manage_picker(result):
@@ -375,106 +366,6 @@ async def test_wizard_app_requires_selection(release):
     assert active == "step-skills"
 
 
-def test_find_lists_all(release, workspace):
-    result = _invoke(["skills", "find"])
-
-    assert result.exit_code == 0
-    assert "alpha" in result.output
-    assert "beta" in result.output
-    assert "flow" in result.output
-
-
-def test_find_filters_by_query(release, workspace):
-    result = _invoke(["skills", "find", "tooling"])
-
-    assert result.exit_code == 0
-    assert "alpha" in result.output
-    assert "beta" not in result.output
-
-
-def test_find_interactive_renders_selection(release, workspace, monkeypatch):
-    monkeypatch.setattr(_skills, "_is_interactive", lambda: True)
-    monkeypatch.setattr(_skills, "ProbablSkillsFinder", _fake_find_app(["alpha"]))
-
-    result = _invoke(["skills", "find"])
-
-    assert result.exit_code == 0
-    assert "alpha" in result.output
-    assert "beta" not in result.output
-
-
-def test_find_interactive_cancelled(release, workspace, monkeypatch):
-    monkeypatch.setattr(_skills, "_is_interactive", lambda: True)
-    monkeypatch.setattr(_skills, "ProbablSkillsFinder", _fake_find_app(None))
-
-    result = _invoke(["skills", "find"])
-
-    assert result.exit_code == 0
-    assert "alpha" not in result.output
-
-
-def test_find_all_lists_everything_without_picker(release, workspace, monkeypatch):
-    monkeypatch.setattr(_skills, "_is_interactive", lambda: True)
-
-    def _boom(catalog):
-        raise AssertionError("the interactive picker must not be launched")
-
-    monkeypatch.setattr(_skills, "ProbablSkillsFinder", _boom)
-
-    result = _invoke(["skills", "find", "--all"])
-
-    assert result.exit_code == 0
-    assert "alpha" in result.output
-    assert "beta" in result.output
-    assert "flow" in result.output
-
-
-def test_find_all_ignores_query(release, workspace):
-    result = _invoke(["skills", "find", "--all", "tooling"])
-
-    assert result.exit_code == 0
-    assert "alpha" in result.output
-    assert "beta" in result.output
-
-
-async def test_finder_app_returns_selection(release):
-    _, _, catalog = fetch_release()
-
-    app = ProbablSkillsFinder(catalog)
-    async with app.run_test() as pilot:
-        app.query_one("#sel-workflows", SelectionList).select_all()
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-
-    assert set(app.result) == {"flow", "alpha", "beta"}
-
-
-async def test_finder_app_requires_selection(release):
-    _, _, catalog = fetch_release()
-
-    app = ProbablSkillsFinder(catalog)
-    async with app.run_test() as pilot:
-        await pilot.press("enter")
-        await pilot.pause()
-        assert app.is_running is True
-        await pilot.press("escape")
-        await pilot.pause()
-
-    assert app.result is None
-
-
-async def test_finder_app_cancel(release):
-    _, _, catalog = fetch_release()
-
-    app = ProbablSkillsFinder(catalog)
-    async with app.run_test() as pilot:
-        await pilot.press("escape")
-        await pilot.pause()
-
-    assert app.result is None
-
-
 def test_list_installed(release, workspace):
     _invoke(["skills", "install", "alpha"])
     result = _invoke(["skills", "list"])
@@ -624,7 +515,7 @@ def test_fetch_failure_reports_clean_error(workspace, monkeypatch):
 
     monkeypatch.setattr(_skills, "fetch_release", boom)
 
-    result = _invoke(["skills", "find"])
+    result = _invoke(["skills", "install", "nonexistent"])
 
     assert result.exit_code != 0
     assert "Could not fetch the latest skills release" in _plain_output(result.output)
@@ -635,7 +526,7 @@ def test_skills_no_subcommand_shows_help(release, workspace):
 
     assert result.exit_code == 0
     assert "install" in result.output
-    assert "find" in result.output
+    assert "list" in result.output
 
 
 async def test_auto_radio_set_selects_on_arrow(release):
@@ -659,7 +550,7 @@ async def test_auto_radio_set_selects_on_arrow(release):
 def test_update_interactive_selection(release, workspace, monkeypatch):
     _invoke(["skills", "install", "alpha"])
     release["catalog"]["skills"][0]["hash"] = "hash-alpha-2"
-    monkeypatch.setattr(_skills, "_is_interactive", lambda: True)
+    monkeypatch.setattr(_skills, "is_non_interactive", lambda: False)
     monkeypatch.setattr(
         _skills, "InstalledSkillsPicker", _fake_manage_picker(["alpha"])
     )
@@ -672,7 +563,7 @@ def test_update_interactive_selection(release, workspace, monkeypatch):
 
 def test_update_interactive_cancelled(release, workspace, monkeypatch):
     _invoke(["skills", "install", "alpha"])
-    monkeypatch.setattr(_skills, "_is_interactive", lambda: True)
+    monkeypatch.setattr(_skills, "is_non_interactive", lambda: False)
     monkeypatch.setattr(_skills, "InstalledSkillsPicker", _fake_manage_picker(None))
 
     result = _invoke(["skills", "update"])
@@ -684,7 +575,7 @@ def test_update_interactive_cancelled(release, workspace, monkeypatch):
 def test_remove_interactive_selection(release, workspace, monkeypatch):
     _invoke(["skills", "install", "alpha"])
     skill_dir = workspace.project / ".agents" / "skills" / "alpha"
-    monkeypatch.setattr(_skills, "_is_interactive", lambda: True)
+    monkeypatch.setattr(_skills, "is_non_interactive", lambda: False)
     monkeypatch.setattr(
         _skills, "InstalledSkillsPicker", _fake_manage_picker(["alpha"])
     )
@@ -698,7 +589,7 @@ def test_remove_interactive_selection(release, workspace, monkeypatch):
 def test_remove_interactive_cancelled(release, workspace, monkeypatch):
     _invoke(["skills", "install", "alpha"])
     skill_dir = workspace.project / ".agents" / "skills" / "alpha"
-    monkeypatch.setattr(_skills, "_is_interactive", lambda: True)
+    monkeypatch.setattr(_skills, "is_non_interactive", lambda: False)
     monkeypatch.setattr(_skills, "InstalledSkillsPicker", _fake_manage_picker(None))
 
     result = _invoke(["skills", "remove"])
@@ -706,3 +597,94 @@ def test_remove_interactive_cancelled(release, workspace, monkeypatch):
     assert result.exit_code == 0
     assert "Nothing selected" in result.output
     assert skill_dir.is_dir()
+
+
+# --------------------------------------------------------------------------- #
+# Agent detection: skills install non-interactive
+# --------------------------------------------------------------------------- #
+
+_AGENT_ENV_VARS = (
+    "CLAUDECODE",
+    "CURSOR_AGENT",
+    "GEMINI_CLI",
+    "CODEX_SANDBOX",
+    "PI_CODING_AGENT",
+    "OPENCODE_CLIENT",
+    "CI",
+)
+
+
+def _clear_agent_envs(monkeypatch):
+    for var in _AGENT_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_install_all_keyword_installs_everything(release, workspace, monkeypatch):
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("CLAUDECODE", "1")
+
+    result = _invoke(["skills", "install", "all"])
+
+    assert result.exit_code == 0
+    skills_dir = workspace.project / ".claude" / "skills"
+    assert (skills_dir / "alpha" / "SKILL.md").is_file()
+    assert (skills_dir / "beta" / "SKILL.md").is_file()
+
+
+def test_install_ids_uses_detected_agent(release, workspace, monkeypatch):
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("CURSOR_AGENT", "1")
+
+    result = _invoke(["skills", "install", "alpha"])
+
+    assert result.exit_code == 0
+    assert (workspace.project / ".cursor" / "skills" / "alpha").is_dir()
+    assert not (workspace.project / ".agents").exists()
+
+
+def test_install_non_interactive_no_args_prints_catalog(
+    release, workspace, monkeypatch
+):
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setattr(_skills, "is_non_interactive", lambda: True)
+
+    result = _invoke(["skills", "install"])
+
+    assert result.exit_code == 0
+    assert "alpha" in result.output
+    assert "beta" in result.output
+    assert "flow" in result.output
+    assert "skore skills install" in result.output
+    assert not (workspace.project / ".claude").exists()
+
+
+def test_install_non_interactive_no_agent_prints_catalog(
+    release, workspace, monkeypatch
+):
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setattr(_skills, "is_non_interactive", lambda: True)
+
+    result = _invoke(["skills", "install"])
+
+    assert result.exit_code == 0
+    assert "alpha" in result.output
+    assert "beta" in result.output
+    assert "skore skills install" in result.output
+
+
+def test_resolve_agent_names_uses_detected_agent(monkeypatch):
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert _skills._resolve_agent_names(()) == ["claude-code"]
+
+
+def test_resolve_agent_names_explicit_overrides_detection(monkeypatch):
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert _skills._resolve_agent_names(("cursor",)) == ["cursor"]
+
+
+def test_resolve_agent_names_falls_back_when_no_detection(monkeypatch):
+    _clear_agent_envs(monkeypatch)
+    assert _skills._resolve_agent_names(()) == ["agents"]

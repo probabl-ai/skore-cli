@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import rich.box
 import rich_click as click
 from rich.console import Console
 from rich.theme import Theme
+
+from skore_cli._agents import is_non_interactive
 
 # Static slant-style wordmark for the top-level `skore` welcome output.
 SKORE_BANNER = r"""
@@ -22,6 +25,7 @@ console = Console(
             "skore.path": "blue",
             "skore.ok": "green",
             "skore.muted": "dim",
+            "skore.cmd": "bold cyan",
         }
     )
 )
@@ -41,3 +45,7 @@ click.rich_click.HEADER_TEXT = (
     "[bold cyan]skore[/]  [dim]· ML reporting & agent skills[/]"
 )
 click.rich_click.STYLE_HEADER_TEXT = ""
+
+if is_non_interactive():
+    click.rich_click.STYLE_OPTIONS_PANEL_BOX = rich.box.SIMPLE_HEAD
+    click.rich_click.STYLE_COMMANDS_PANEL_BOX = rich.box.SIMPLE_HEAD

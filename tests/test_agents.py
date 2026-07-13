@@ -3,10 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from skore_cli.skills._agents import (
-    AGENT_NAMES,
+from skore_cli._agents import (
     AGENTS,
     DEFAULT_AGENT,
+    HARNESS_NAMES,
+    SKILL_AGENT_NAMES,
     Agent,
     resolve_targets,
 )
@@ -17,7 +18,23 @@ def test_default_agent():
 
 
 def test_agent_names_match_registry():
-    assert list(AGENTS) == AGENT_NAMES
+    assert SKILL_AGENT_NAMES == [
+        "agents",
+        "claude-code",
+        "cursor",
+        "codex",
+        "gemini",
+    ]
+
+
+def test_harness_names_come_from_registry():
+    assert HARNESS_NAMES == ["claude", "opencode", "pi", "copilot"]
+
+
+def test_harness_rows_are_complete():
+    harnesses = [agent for agent in AGENTS.values() if agent.harness_name]
+    assert all(agent.configure is not None for agent in harnesses)
+    assert all(agent.launch is not None for agent in harnesses)
 
 
 def test_registry_values_are_agents():
