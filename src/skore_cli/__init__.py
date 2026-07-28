@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import rich_click as click
 
-import skore_cli._style  # noqa: F401  (applies the CLI palette and rich-click config)
 from skore_cli._plugins import load_plugins
+from skore_cli._style import SKORE_BANNER, console
 
 # These command modules defer their heavy `skore` imports into the callbacks, so
 # importing them (to build the CLI / show `--help`) stays instant. Each merges its
@@ -32,6 +32,7 @@ def cli(ctx) -> None:
     ``skore skills`` to install probabl-skills locally.
     """
     if ctx.invoked_subcommand is None:
+        console.print(f"[bold cyan]{SKORE_BANNER}[/]")
         click.echo(ctx.get_help())
 
 

@@ -16,17 +16,33 @@ def test_cli_exposes_builtin_commands():
     assert {"skills", "agent"} <= set(cli.commands)
 
 
-def test_cli_without_subcommand_prints_help():
+def test_cli_without_subcommand_prints_banner_before_help():
     from click.testing import CliRunner
 
     from skore_cli import cli
+    from skore_cli._style import SKORE_BANNER
 
     result = CliRunner().invoke(cli, [])
 
     assert result.exit_code == 0
-    assert "Usage" in result.output
+    banner = SKORE_BANNER.rstrip("\n")
+    assert banner in result.output
+    assert result.output.index(banner) < result.output.index("Usage")
     assert "agent" in result.output
     assert "skills" in result.output
+
+
+def test_cli_subcommand_help_omits_banner():
+    from click.testing import CliRunner
+
+    from skore_cli import cli
+    from skore_cli._style import SKORE_BANNER
+
+    result = CliRunner().invoke(cli, ["skills"])
+
+    assert result.exit_code == 0
+    assert SKORE_BANNER.rstrip("\n") not in result.output
+    assert "Usage" in result.output
 
 
 # --------------------------------------------------------------------------- #

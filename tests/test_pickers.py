@@ -6,8 +6,13 @@ from textual.app import App, ComposeResult
 from textual.widgets import SelectionList
 
 from skore_cli.agent.app import HarnessPicker, WorkspacePicker
+from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpInput, HelpScreen
-from skore_cli.skills.app._manage import InstalledSkillsPicker
+from skore_cli.skills.app import (
+    InstalledSkillsPicker,
+    ProbablSkillsFinder,
+    ProbablSkillsInstaller,
+)
 
 HARNESSES = [
     ("opencode", "OpenCode", True),
@@ -16,6 +21,22 @@ HARNESSES = [
 ]
 
 WORKSPACES = [("ws-1", "First"), ("ws-2", "Second")]
+
+
+async def test_textual_apps_show_banner():
+    catalog = {"workflows": [], "skills": []}
+    apps = [
+        HarnessPicker(HARNESSES),
+        WorkspacePicker(WORKSPACES),
+        InstalledSkillsPicker(["alpha"], title="Update skills"),
+        ProbablSkillsFinder(catalog),
+        ProbablSkillsInstaller(catalog, agent=(), default_global=False),
+    ]
+
+    for app in apps:
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.query_one(SkoreBanner)
 
 
 # --------------------------------------------------------------------------- #
