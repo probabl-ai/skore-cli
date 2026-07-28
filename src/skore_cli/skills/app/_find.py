@@ -6,8 +6,10 @@ from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.containers import Vertical
 from textual.widgets import Footer, Header, SelectionList
 
+from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpScreen
 from skore_cli.skills.app._widgets import SkillSelection
 
@@ -45,9 +47,13 @@ class ProbablSkillsFinder(App[None]):
     Screen {
         align: center middle;
     }
-    #finder {
+    #finder-layout {
         width: 90%;
         height: 90%;
+    }
+    #finder {
+        width: 100%;
+        height: 1fr;
     }
     """
 
@@ -66,7 +72,9 @@ class ProbablSkillsFinder(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield SkillSelection(self._catalog, intro=_FIND_INTRO, id="finder")
+        with Vertical(id="finder-layout"):
+            yield SkoreBanner()
+            yield SkillSelection(self._catalog, intro=_FIND_INTRO, id="finder")
         yield Footer()
 
     def on_mount(self) -> None:

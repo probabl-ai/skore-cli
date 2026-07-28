@@ -6,6 +6,15 @@ import rich_click as click
 from rich.console import Console
 from rich.theme import Theme
 
+# Static slant-style wordmark for the top-level `skore` welcome output.
+SKORE_BANNER = r"""
+   _____ __ __ ____  ____  ______
+  / ___// //_// __ \/ __ \/ ____/
+  \__ \/ ,<  / / / / /_/ / __/
+ ___/ / /| |/ /_/ / _, _/ /___
+/____/_/ |_|\____/_/ |_/_____/
+"""
+
 console = Console(
     theme=Theme(
         {

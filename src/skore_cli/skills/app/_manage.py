@@ -8,6 +8,7 @@ from textual.containers import Vertical
 from textual.widgets import Footer, Header, Label, SelectionList
 from textual.widgets.selection_list import Selection
 
+from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpScreen
 
 _INTRO = (
@@ -65,6 +66,7 @@ class InstalledSkillsPicker(App[list[str] | None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="picker"):
+            yield SkoreBanner()
             yield Label(self._title, classes="picker-intro")
             yield Label(_INTRO, classes="picker-intro")
             skill_list = SelectionList[str](

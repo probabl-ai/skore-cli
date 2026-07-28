@@ -7,6 +7,7 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Footer, Header, Label, RadioButton
 
+from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpScreen
 from skore_cli.skills.app._widgets import AutoRadioSet
 
@@ -95,6 +96,7 @@ class HarnessPicker(App[str | None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="picker"):
+            yield SkoreBanner()
             yield Label(_HARNESS_INTRO, classes="picker-intro")
             with AutoRadioSet(id="harnesses"):
                 for index, (_, label, detected) in enumerate(self._harnesses):
@@ -162,6 +164,7 @@ class WorkspacePicker(App[str | None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="picker"):
+            yield SkoreBanner()
             yield Label(_WORKSPACE_INTRO, classes="picker-intro")
             with AutoRadioSet(id="workspaces"):
                 for index, (public_id, name) in enumerate(self._workspaces):

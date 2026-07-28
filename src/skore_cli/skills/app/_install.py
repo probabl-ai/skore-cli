@@ -6,6 +6,7 @@ from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.containers import Vertical
 from textual.widgets import (
     Footer,
     Header,
@@ -16,6 +17,7 @@ from textual.widgets import (
     TabPane,
 )
 
+from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpScreen
 from skore_cli.skills._agents import AGENT_NAMES, DEFAULT_AGENT
 from skore_cli.skills.app._widgets import AutoRadioSet, SkillSelection
@@ -64,9 +66,13 @@ class ProbablSkillsInstaller(App[None]):
     Screen {
         align: center middle;
     }
-    #wizard {
+    #installer {
         width: 90%;
         height: 90%;
+    }
+    #wizard {
+        width: 100%;
+        height: 1fr;
     }
     .step-intro {
         margin: 1 1;
@@ -102,26 +108,30 @@ class ProbablSkillsInstaller(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with TabbedContent(id="wizard"):
-            with TabPane("1 · Skills", id="step-skills"):
-                yield SkillSelection(self._catalog, intro=_SKILLS_INTRO)
-            if self._ask_agent:
-                with TabPane("2 · Agents", id="step-agents"):
-                    yield Label(_AGENTS_INTRO, classes="step-intro")
-                    with AutoRadioSet(id="agents"):
-                        for name in AGENT_NAMES:
-                            recommended = name == DEFAULT_AGENT
-                            label = (
-                                f"{name}  (recommended — open standard)"
-                                if recommended
-                                else name
-                            )
-                            yield RadioButton(label, value=recommended)
-            with TabPane("3 · Scope", id="step-scope"):
-                yield Label(_SCOPE_INTRO, classes="step-intro")
-                with AutoRadioSet(id="scope"):
-                    yield RadioButton("Project (local)", value=not self._default_global)
-                    yield RadioButton("User (global)", value=self._default_global)
+        with Vertical(id="installer"):
+            yield SkoreBanner()
+            with TabbedContent(id="wizard"):
+                with TabPane("1 · Skills", id="step-skills"):
+                    yield SkillSelection(self._catalog, intro=_SKILLS_INTRO)
+                if self._ask_agent:
+                    with TabPane("2 · Agents", id="step-agents"):
+                        yield Label(_AGENTS_INTRO, classes="step-intro")
+                        with AutoRadioSet(id="agents"):
+                            for name in AGENT_NAMES:
+                                recommended = name == DEFAULT_AGENT
+                                label = (
+                                    f"{name}  (recommended — open standard)"
+                                    if recommended
+                                    else name
+                                )
+                                yield RadioButton(label, value=recommended)
+                with TabPane("3 · Scope", id="step-scope"):
+                    yield Label(_SCOPE_INTRO, classes="step-intro")
+                    with AutoRadioSet(id="scope"):
+                        yield RadioButton(
+                            "Project (local)", value=not self._default_global
+                        )
+                        yield RadioButton("User (global)", value=self._default_global)
         yield Footer()
 
     def on_mount(self) -> None:
