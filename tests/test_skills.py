@@ -118,6 +118,21 @@ def test_install_agent_without_selection_errors(release, workspace):
     assert not (workspace.project / ".cursor").exists()
 
 
+def test_render_catalog_interactive(monkeypatch):
+    rendered = []
+    catalog = {
+        "workflows": [{"id": "flow", "summary": "A workflow"}],
+        "skills": [{"id": "alpha", "summary": "A skill"}],
+    }
+
+    monkeypatch.setattr(_skills, "is_non_interactive", lambda: False)
+    monkeypatch.setattr(_skills.console, "print", rendered.append)
+
+    _skills._render_catalog(catalog)
+
+    assert [table.title for table in rendered] == ["Workflows (recommended)", "Skills"]
+
+
 def test_install_global_without_selection_errors(release, workspace):
     result = _invoke(["skills", "install", "-g"])
 

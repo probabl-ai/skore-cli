@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -186,6 +187,17 @@ def test_auth_missing_skore_raises_click_exception(monkeypatch):
     with pytest.raises(click.ClickException) as excinfo:
         _skore.auth("store")
     assert "skore" in str(excinfo.value)
+
+
+def test_resolve_hub_uri_sets_explicit_url(monkeypatch):
+    module = SimpleNamespace(URI=lambda: "https://resolved.test")
+
+    monkeypatch.delenv(_skore.URI_ENV, raising=False)
+
+    assert _skore.resolve_hub_uri("https://hub.test", lambda _: module) == (
+        "https://resolved.test"
+    )
+    assert os.environ[_skore.URI_ENV] == "https://hub.test"
 
 
 # --------------------------------------------------------------------------- #
