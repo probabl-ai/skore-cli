@@ -17,8 +17,8 @@ from textual.widgets import (
     TabPane,
 )
 
-from skore_cli.app._banner import SkoreBanner
 from skore_cli._agents import DEFAULT_AGENT, SKILL_AGENT_NAMES
+from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpScreen
 from skore_cli.skills.app._widgets import AutoRadioSet, SkillSelection
 

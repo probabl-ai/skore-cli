@@ -64,6 +64,18 @@ def test_cli_help_no_agent_shows_generic_quick_start(monkeypatch):
     assert "Configure and launch" in result.output
 
 
+def test_cli_interactive_without_subcommand_prints_help(monkeypatch):
+    from click.testing import CliRunner
+
+    from skore_cli import cli
+
+    monkeypatch.setattr("skore_cli.is_non_interactive", lambda: False)
+    result = CliRunner().invoke(cli, [])
+
+    assert result.exit_code == 0
+    assert "Usage:" in result.output
+
+
 def test_cli_help_claude_code_detected(monkeypatch):
     from click.testing import CliRunner
 

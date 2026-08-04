@@ -10,7 +10,6 @@ from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpInput, HelpScreen
 from skore_cli.skills.app import (
     InstalledSkillsPicker,
-    ProbablSkillsFinder,
     ProbablSkillsInstaller,
 )
 
@@ -29,7 +28,6 @@ async def test_textual_apps_show_banner():
         HarnessPicker(HARNESSES),
         WorkspacePicker(WORKSPACES),
         InstalledSkillsPicker(["alpha"], title="Update skills"),
-        ProbablSkillsFinder(catalog),
         ProbablSkillsInstaller(catalog, agent=(), default_global=False),
     ]
 
