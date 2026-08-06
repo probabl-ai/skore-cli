@@ -225,7 +225,7 @@ def test_copilot_config_matches_custom_endpoint(tmp_path):
     provider = providers[0]
     assert provider["name"] == "Skore Agent"
     assert provider["vendor"] == "customendpoint"
-    assert provider["apiKey"] == "secret-key"
+    assert provider["apiKey"] == "skore"
     assert provider["apiType"] == "chat-completions"
     model = provider["models"][0]
     assert model["id"] == "skore-agent"
@@ -234,6 +234,7 @@ def test_copilot_config_matches_custom_endpoint(tmp_path):
     assert model["vision"] is False
     assert model["maxInputTokens"] == 200000
     assert model["maxOutputTokens"] == 8192
+    assert model["requestHeaders"] == {"X-API-Key": "secret-key"}
     gitignore = (tmp_path / ".gitignore").read_text().splitlines()
     assert ".vscode/chatLanguageModels.json" in gitignore
 
@@ -263,7 +264,8 @@ def test_launch_copilot_prefers_code_and_opens_workspace(tmp_path, monkeypatch):
     user_config = user_root / "code" / "chatLanguageModels.json"
     providers = json.loads(user_config.read_text())
     assert providers[-1]["name"] == "Skore Agent"
-    assert providers[-1]["apiKey"] == "secret-key"
+    assert providers[-1]["apiKey"] == "skore"
+    assert providers[-1]["models"][0]["requestHeaders"] == {"X-API-Key": "secret-key"}
 
 
 def test_launch_copilot_falls_back_to_insiders(tmp_path, monkeypatch):

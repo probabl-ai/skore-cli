@@ -115,11 +115,16 @@ def _configure_pi(ctx: HarnessContext) -> dict[str, Any]:
 
 
 def _copilot_provider(ctx: HarnessContext) -> dict[str, Any]:
-    """Build the Custom Endpoint provider entry for VS Code Copilot Chat."""
+    """Build the Custom Endpoint provider entry for VS Code Copilot Chat.
+
+    VS Code treats ``apiKey`` as a keychain secret reference, so a raw hub key
+    never reaches the wire. Auth is sent as a literal ``X-API-Key`` header
+    instead; ``apiKey`` is only a schema placeholder (``minLength: 1``).
+    """
     return {
         "name": COPILOT_PROVIDER_NAME,
         "vendor": "customendpoint",
-        "apiKey": ctx.api_key,
+        "apiKey": "skore",
         "apiType": "chat-completions",
         "models": [
             {
@@ -130,6 +135,7 @@ def _copilot_provider(ctx: HarnessContext) -> dict[str, Any]:
                 "vision": False,
                 "maxInputTokens": 200000,
                 "maxOutputTokens": 8192,
+                "requestHeaders": {"X-API-Key": ctx.api_key},
             }
         ],
     }
