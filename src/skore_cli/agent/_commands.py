@@ -190,7 +190,8 @@ def agent(
     harness config, and launches the agent. Later runs reuse ``.skore`` in the
     project directory.
 
-    Supported harnesses: Claude, OpenCode and Pi (must be on ``PATH``).
+    Supported harnesses: Bob Shell, Bob IDE, Claude, Cursor, OpenCode and Pi
+    (all but Bob IDE must be on ``PATH``).
     """
     workspace = workspace.resolve()
     if not workspace.is_dir():
