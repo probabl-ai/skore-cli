@@ -196,3 +196,141 @@ def test_exec_harness_invokes_execve(monkeypatch):
     assert recorded["executable"] == "/usr/bin/opencode"
     assert recorded["argv"] == ["opencode", "-m", "x"]
     assert recorded["env"] == {"A": "B"}
+
+
+def test_detect_copilot_by_code_binary(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        _harnesses.shutil,
+        "which",
+        lambda name: "/usr/bin/code" if name == "code" else None,
+    )
+    assert _harnesses._detect_copilot(tmp_path) is True
+    assert detect_harnesses(tmp_path) == ["copilot"]
+
+
+def test_detect_copilot_by_code_insiders(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        _harnesses.shutil,
+        "which",
+        lambda name: "/usr/bin/code-insiders" if name == "code-insiders" else None,
+    )
+    assert detect_harnesses(tmp_path) == ["copilot"]
+
+
+def test_copilot_config_matches_custom_endpoint(tmp_path):
+    HARNESSES["copilot"].configure(_ctx(tmp_path))
+    config_path = tmp_path / ".vscode" / "chatLanguageModels.json"
+    providers = json.loads(config_path.read_text())
+    assert len(providers) == 1
+    provider = providers[0]
+    assert provider["name"] == "Skore Agent"
+    assert provider["vendor"] == "customendpoint"
+    assert provider["apiKey"] == "secret-key"
+    assert provider["apiType"] == "chat-completions"
+    model = provider["models"][0]
+    assert model["id"] == "skore-agent"
+    assert model["url"] == "http://hub.test/v1/chat/completions"
+    assert model["toolCalling"] is True
+    assert model["vision"] is False
+    assert model["maxInputTokens"] == 200000
+    assert model["maxOutputTokens"] == 8192
+    gitignore = (tmp_path / ".gitignore").read_text().splitlines()
+    assert ".vscode/chatLanguageModels.json" in gitignore
+
+
+def test_launch_copilot_prefers_code_and_opens_workspace(tmp_path, monkeypatch):
+    HARNESSES["copilot"].configure(_ctx(tmp_path))
+    user_root = tmp_path / "vscode-user"
+    captured: dict[str, list[str]] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    monkeypatch.setattr(
+        _harnesses.shutil,
+        "which",
+        lambda cmd: f"/usr/bin/{cmd}" if cmd in {"code", "code-insiders"} else None,
+    )
+    monkeypatch.setattr(
+        _harnesses,
+        "_copilot_user_config_path",
+        lambda binary, home=None: user_root / binary / "chatLanguageModels.json",
+    )
+    monkeypatch.setattr(_harnesses, "_exec_harness", fake_exec)
+
+    _harnesses.launch_harness("copilot", tmp_path, model_id="skore-agent")
+    assert captured["argv"] == ["code", str(tmp_path)]
+    user_config = user_root / "code" / "chatLanguageModels.json"
+    providers = json.loads(user_config.read_text())
+    assert providers[-1]["name"] == "Skore Agent"
+    assert providers[-1]["apiKey"] == "secret-key"
+
+
+def test_launch_copilot_falls_back_to_insiders(tmp_path, monkeypatch):
+    HARNESSES["copilot"].configure(_ctx(tmp_path))
+    user_root = tmp_path / "vscode-user"
+    captured: dict[str, list[str]] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    monkeypatch.setattr(
+        _harnesses.shutil,
+        "which",
+        lambda cmd: "/usr/bin/code-insiders" if cmd == "code-insiders" else None,
+    )
+    monkeypatch.setattr(
+        _harnesses,
+        "_copilot_user_config_path",
+        lambda binary, home=None: user_root / binary / "chatLanguageModels.json",
+    )
+    monkeypatch.setattr(_harnesses, "_exec_harness", fake_exec)
+    _harnesses.launch_harness("copilot", tmp_path, model_id="skore-agent")
+    assert captured["argv"] == ["code-insiders", str(tmp_path)]
+    user_config = user_root / "code-insiders" / "chatLanguageModels.json"
+    assert user_config.is_file()
+
+def test_upsert_copilot_provider_preserves_other_entries(tmp_path):
+    user_config = tmp_path / "User" / "chatLanguageModels.json"
+    user_config.parent.mkdir(parents=True)
+    user_config.write_text(
+        json.dumps(
+            [
+                {"name": "Other", "vendor": "openai", "models": []},
+                {
+                    "name": "Skore Agent",
+                    "vendor": "customendpoint",
+                    "apiKey": "old-key",
+                    "models": [],
+                },
+            ]
+        )
+        + "\n"
+    )
+    provider = {
+        "name": "Skore Agent",
+        "vendor": "customendpoint",
+        "apiKey": "new-key",
+        "apiType": "chat-completions",
+        "models": [{"id": "skore-agent", "name": "Skore Agent"}],
+    }
+    _harnesses._upsert_copilot_provider(user_config, provider)
+    providers = json.loads(user_config.read_text())
+    assert len(providers) == 2
+    assert providers[0]["name"] == "Other"
+    assert providers[1]["apiKey"] == "new-key"
+
+
+def test_copilot_user_config_path_darwin(tmp_path, monkeypatch):
+    monkeypatch.setattr(_harnesses.sys, "platform", "darwin")
+    path = _harnesses._copilot_user_config_path("code", home=tmp_path)
+    assert path == (
+        tmp_path
+        / "Library"
+        / "Application Support"
+        / "Code"
+        / "User"
+        / "chatLanguageModels.json"
+    )
+    insiders = _harnesses._copilot_user_config_path("code-insiders", home=tmp_path)
+    assert "Code - Insiders" in str(insiders)
