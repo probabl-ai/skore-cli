@@ -2,7 +2,7 @@
 
 The command authenticates with the hub, stores workspace credentials in a local
 ``.skore`` file, writes the harness configuration, and launches Claude,
-OpenCode or Pi when installed.
+OpenCode, Pi or GitHub Copilot when installed.
 
 Heavy ``skore`` (and ``textual``) imports are deferred into the command callback
 so building the CLI (and ``--help``) never imports them.

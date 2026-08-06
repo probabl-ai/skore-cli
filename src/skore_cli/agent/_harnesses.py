@@ -1,7 +1,7 @@
 """Harness registry, detection and per-harness configuration writers.
 
-Supported harnesses: Claude, OpenCode and Pi. Each writer mirrors the
-copy-pastable setup snippets from the Skore Hub agent-setup UI.
+Supported harnesses: Claude, OpenCode, Pi and GitHub Copilot. Each writer
+mirrors the copy-pastable setup snippets from the Skore Hub agent-setup UI.
 """
 
 from __future__ import annotations
@@ -9,16 +9,21 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from skore_cli._style import console
+from skore_cli.agent._skore_file import ensure_gitignore_entry
 
 DEFAULT_MODEL_ID = "skore-agent"
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
 OPENCODE_PROVIDER_KEY = "skore"
+COPILOT_PROVIDER_NAME = "Skore Agent"
+COPILOT_PROJECT_CONFIG = ".vscode/chatLanguageModels.json"
+COPILOT_BINARIES = ("code", "code-insiders")
 
 
 @dataclass(frozen=True)
@@ -109,6 +114,98 @@ def _configure_pi(ctx: HarnessContext) -> dict[str, Any]:
     return {"config_path": str(config_path)}
 
 
+def _copilot_provider(ctx: HarnessContext) -> dict[str, Any]:
+    """Build the Custom Endpoint provider entry for VS Code Copilot Chat.
+
+    VS Code treats ``apiKey`` as a keychain secret reference, so a raw hub key
+    never reaches the wire. Auth is sent as a literal ``X-API-Key`` header
+    instead; ``apiKey`` is only a schema placeholder (``minLength: 1``).
+    """
+    return {
+        "name": COPILOT_PROVIDER_NAME,
+        "vendor": "customendpoint",
+        "apiKey": "skore",
+        "apiType": "chat-completions",
+        "models": [
+            {
+                "id": ctx.model_id,
+                "name": COPILOT_PROVIDER_NAME,
+                "url": f"{ctx.base_url}/chat/completions",
+                "toolCalling": True,
+                "vision": False,
+                "maxInputTokens": 200000,
+                "maxOutputTokens": 8192,
+                "requestHeaders": {"X-API-Key": ctx.api_key},
+            }
+        ],
+    }
+
+
+def _configure_copilot(ctx: HarnessContext) -> dict[str, Any]:
+    """Write ``.vscode/chatLanguageModels.json`` for GitHub Copilot in VS Code."""
+    config_path = ctx.workspace / COPILOT_PROJECT_CONFIG
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = [_copilot_provider(ctx)]
+    config_path.write_text(json.dumps(payload, indent=2) + "\n")
+    ensure_gitignore_entry(ctx.workspace, COPILOT_PROJECT_CONFIG)
+    console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
+    return {"config_path": str(config_path)}
+
+
+def _resolve_copilot_binary() -> str | None:
+    """Return ``code`` or ``code-insiders`` when present on PATH."""
+    for name in COPILOT_BINARIES:
+        if shutil.which(name) is not None:
+            return name
+    return None
+
+
+def _vscode_app_dirname(binary: str) -> str:
+    return "Code - Insiders" if binary == "code-insiders" else "Code"
+
+
+def _copilot_user_config_path(binary: str, *, home: Path | None = None) -> Path:
+    """Return the user-profile ``chatLanguageModels.json`` for ``binary``."""
+    home = home or Path.home()
+    app = _vscode_app_dirname(binary)
+    if sys.platform == "darwin":
+        return (
+            home
+            / "Library"
+            / "Application Support"
+            / app
+            / "User"
+            / "chatLanguageModels.json"
+        )
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA")
+        base = Path(appdata) if appdata else home / "AppData" / "Roaming"
+        return base / app / "User" / "chatLanguageModels.json"
+    return home / ".config" / app / "User" / "chatLanguageModels.json"
+
+
+def _upsert_copilot_provider(user_config_path: Path, provider: dict[str, Any]) -> None:
+    """Upsert the Skore provider into a user-level language models file."""
+    providers: list[Any] = []
+    if user_config_path.is_file():
+        try:
+            providers = json.loads(user_config_path.read_text() or "[]")
+        except json.JSONDecodeError as error:
+            # Overwriting would silently drop the other providers of the user.
+            raise RuntimeError(
+                f"could not parse {user_config_path}; "
+                "add the Skore Agent provider from VS Code instead."
+            ) from error
+    updated = [
+        entry
+        for entry in providers
+        if not (isinstance(entry, dict) and entry.get("name") == COPILOT_PROVIDER_NAME)
+    ]
+    updated.append(provider)
+    user_config_path.parent.mkdir(parents=True, exist_ok=True)
+    user_config_path.write_text(json.dumps(updated, indent=2) + "\n")
+
+
 def _detect_opencode(_workspace: Path) -> bool:
     return shutil.which("opencode") is not None
 
@@ -119,6 +216,10 @@ def _detect_claude(_workspace: Path) -> bool:
 
 def _detect_pi(_workspace: Path) -> bool:
     return shutil.which("pi") is not None
+
+
+def _detect_copilot(_workspace: Path) -> bool:
+    return _resolve_copilot_binary() is not None
 
 
 def launch_harness(
@@ -158,6 +259,24 @@ def _launch_pi(workspace: Path, *, model_id: str) -> None:
     )
 
 
+def _launch_copilot(workspace: Path, *, model_id: str) -> None:
+    binary = _resolve_copilot_binary()
+    if binary is None:
+        raise RuntimeError("GitHub Copilot is not installed or not on PATH.")
+
+    # VS Code only reads providers from the user profile, so the project config
+    # written by ``_configure_copilot`` has to be mirrored there.
+    provider = json.loads((workspace / COPILOT_PROJECT_CONFIG).read_text())[0]
+    user_config = _copilot_user_config_path(binary)
+    _upsert_copilot_provider(user_config, provider)
+    console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
+    console.print(
+        "[skore.muted]Select[/] [skore.skill]Skore Agent[/] "
+        "[skore.muted]in Copilot Chat (reload VS Code if it is missing).[/]"
+    )
+    _exec_harness(binary, [binary, str(workspace)])
+
+
 def _exec_harness(
     name: str, argv: list[str], *, env: dict[str, str] | None = None
 ) -> None:
@@ -171,6 +290,7 @@ _LAUNCHERS = {
     "claude": _launch_claude,
     "opencode": _launch_opencode,
     "pi": _launch_pi,
+    "copilot": _launch_copilot,
 }
 
 
@@ -203,6 +323,12 @@ HARNESSES: dict[str, Harness] = {
         "Pi",
         _detect_pi,
         _configure_pi,
+    ),
+    "copilot": Harness(
+        "copilot",
+        "GitHub Copilot",
+        _detect_copilot,
+        _configure_copilot,
     ),
 }
 

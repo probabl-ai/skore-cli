@@ -24,6 +24,7 @@ Supported harnesses:
   • Claude       — writes .claude/settings.local.json
   • OpenCode     — writes opencode.json
   • Pi           — writes .pi/agent/models.json
+  • Copilot      — writes .vscode/chatLanguageModels.json
 
 Skore stores your hub credentials in .skore and selects the
 skore-agent model when the harness starts.
