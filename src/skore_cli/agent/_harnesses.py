@@ -22,7 +22,7 @@ DEFAULT_MODEL_ID = "skore-agent"
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
 OPENCODE_PROVIDER_KEY = "skore"
 COPILOT_PROVIDER_NAME = "Skore Agent"
-COPILOT_PROJECT_CONFIG = Path(".vscode") / "chatLanguageModels.json"
+COPILOT_PROJECT_CONFIG = ".vscode/chatLanguageModels.json"
 COPILOT_BINARIES = ("code", "code-insiders")
 
 
@@ -141,7 +141,7 @@ def _configure_copilot(ctx: HarnessContext) -> dict[str, Any]:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     payload = [_copilot_provider(ctx)]
     config_path.write_text(json.dumps(payload, indent=2) + "\n")
-    ensure_gitignore_entry(ctx.workspace, str(COPILOT_PROJECT_CONFIG))
+    ensure_gitignore_entry(ctx.workspace, COPILOT_PROJECT_CONFIG)
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
     return {"config_path": str(config_path)}
 
@@ -183,11 +183,13 @@ def _upsert_copilot_provider(user_config_path: Path, provider: dict[str, Any]) -
     providers: list[Any] = []
     if user_config_path.is_file():
         try:
-            loaded = json.loads(user_config_path.read_text() or "[]")
-        except json.JSONDecodeError:
-            loaded = []
-        if isinstance(loaded, list):
-            providers = loaded
+            providers = json.loads(user_config_path.read_text() or "[]")
+        except json.JSONDecodeError as error:
+            # Overwriting would silently drop the other providers of the user.
+            raise RuntimeError(
+                f"could not parse {user_config_path}; "
+                "add the Skore Agent provider from VS Code instead."
+            ) from error
     updated = [
         entry
         for entry in providers
@@ -256,26 +258,12 @@ def _launch_copilot(workspace: Path, *, model_id: str) -> None:
     if binary is None:
         raise RuntimeError("GitHub Copilot is not installed or not on PATH.")
 
-    project_config = workspace / COPILOT_PROJECT_CONFIG
-    if project_config.is_file():
-        try:
-            providers = json.loads(project_config.read_text() or "[]")
-        except json.JSONDecodeError:
-            providers = []
-        provider = next(
-            (
-                entry
-                for entry in providers
-                if isinstance(entry, dict)
-                and entry.get("name") == COPILOT_PROVIDER_NAME
-            ),
-            None,
-        )
-        if provider is not None:
-            user_config = _copilot_user_config_path(binary)
-            _upsert_copilot_provider(user_config, provider)
-            console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
-
+    # VS Code only reads providers from the user profile, so the project config
+    # written by ``_configure_copilot`` has to be mirrored there.
+    provider = json.loads((workspace / COPILOT_PROJECT_CONFIG).read_text())[0]
+    user_config = _copilot_user_config_path(binary)
+    _upsert_copilot_provider(user_config, provider)
+    console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
     console.print(
         "[skore.muted]Select[/] [skore.skill]Skore Agent[/] "
         "[skore.muted]in Copilot Chat (reload VS Code if it is missing).[/]"

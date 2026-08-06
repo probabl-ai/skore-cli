@@ -290,6 +290,13 @@ def test_launch_copilot_falls_back_to_insiders(tmp_path, monkeypatch):
     user_config = user_root / "code-insiders" / "chatLanguageModels.json"
     assert user_config.is_file()
 
+
+def test_launch_copilot_errors_when_binary_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(_harnesses.shutil, "which", lambda cmd: None)
+    with pytest.raises(RuntimeError, match="not installed or not on PATH"):
+        _harnesses._launch_copilot(tmp_path, model_id="skore-agent")
+
+
 def test_upsert_copilot_provider_preserves_other_entries(tmp_path):
     user_config = tmp_path / "User" / "chatLanguageModels.json"
     user_config.parent.mkdir(parents=True)
@@ -321,16 +328,39 @@ def test_upsert_copilot_provider_preserves_other_entries(tmp_path):
     assert providers[1]["apiKey"] == "new-key"
 
 
-def test_copilot_user_config_path_darwin(tmp_path, monkeypatch):
-    monkeypatch.setattr(_harnesses.sys, "platform", "darwin")
+def test_upsert_copilot_provider_errors_on_unparsable_file(tmp_path):
+    user_config = tmp_path / "User" / "chatLanguageModels.json"
+    user_config.parent.mkdir(parents=True)
+    user_config.write_text("// comments are not valid JSON\n[]\n")
+    with pytest.raises(RuntimeError, match="could not parse"):
+        _harnesses._upsert_copilot_provider(user_config, {"name": "Skore Agent"})
+
+
+@pytest.mark.parametrize(
+    ("platform", "expected"),
+    [
+        ("darwin", ("Library", "Application Support", "Code", "User")),
+        ("linux", (".config", "Code", "User")),
+    ],
+)
+def test_copilot_user_config_path_per_platform(
+    tmp_path, monkeypatch, platform, expected
+):
+    monkeypatch.setattr(_harnesses.sys, "platform", platform)
     path = _harnesses._copilot_user_config_path("code", home=tmp_path)
-    assert path == (
-        tmp_path
-        / "Library"
-        / "Application Support"
-        / "Code"
-        / "User"
-        / "chatLanguageModels.json"
-    )
+    assert path == tmp_path.joinpath(*expected, "chatLanguageModels.json")
     insiders = _harnesses._copilot_user_config_path("code-insiders", home=tmp_path)
     assert "Code - Insiders" in str(insiders)
+
+
+def test_copilot_user_config_path_windows_uses_appdata(tmp_path, monkeypatch):
+    monkeypatch.setattr(_harnesses.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    path = _harnesses._copilot_user_config_path("code", home=tmp_path)
+    assert path == tmp_path / "Roaming" / "Code" / "User" / "chatLanguageModels.json"
+
+    monkeypatch.delenv("APPDATA")
+    fallback = _harnesses._copilot_user_config_path("code", home=tmp_path)
+    assert fallback == tmp_path.joinpath(
+        "AppData", "Roaming", "Code", "User", "chatLanguageModels.json"
+    )
