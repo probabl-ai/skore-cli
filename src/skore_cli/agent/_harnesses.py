@@ -40,7 +40,6 @@ COPILOT_BINARIES = ("code", "code-insiders")
 CODEX_PROVIDER_KEY = "skore"
 CODEX_PROVIDER_NAME = "Skore Agent"
 CODEX_PROJECT_CONFIG = ".codex/skore-provider.toml"
-CODEX_ENV_KEY = "SKORE_API_KEY"
 _CODEX_PROVIDER_SECTION = re.compile(
     r"^\[model_providers\.skore\](?:\n(?:[^[\n].*)?)*\n?",
     re.MULTILINE,
@@ -265,13 +264,16 @@ def _codex_user_config_path(*, home: Path | None = None) -> Path:
     return home / ".codex" / "config.toml"
 
 
-def _codex_provider_block(*, base_url: str) -> str:
+def _codex_provider_block(*, base_url: str, api_key: str) -> str:
+    # The key goes in the config rather than in ``env_key``: Codex refuses to
+    # start when the named variable is unset, which breaks every ``codex`` run
+    # that is not launched through ``skore agent``.
     return (
         f"[model_providers.{CODEX_PROVIDER_KEY}]\n"
         f'name = "{CODEX_PROVIDER_NAME}"\n'
         f'base_url = "{base_url}"\n'
-        f'env_key = "{CODEX_ENV_KEY}"\n'
         'wire_api = "responses"\n'
+        f'http_headers = {{ "X-API-Key" = "{api_key}" }}\n'
     )
 
 
@@ -292,7 +294,7 @@ def _set_toml_root_string(text: str, key: str, value: str) -> str:
 
 
 def _upsert_codex_user_config(
-    user_config_path: Path, *, model_id: str, base_url: str
+    user_config_path: Path, *, model_id: str, base_url: str, api_key: str
 ) -> None:
     """Upsert the Skore provider into the user-level Codex config."""
     text = ""
@@ -314,7 +316,7 @@ def _upsert_codex_user_config(
         text += "\n"
     if text.strip() and not text.endswith("\n\n"):
         text = text.rstrip("\n") + "\n\n"
-    text += _codex_provider_block(base_url=base_url)
+    text += _codex_provider_block(base_url=base_url, api_key=api_key)
     user_config_path.parent.mkdir(parents=True, exist_ok=True)
     user_config_path.write_text(text)
 
@@ -334,7 +336,12 @@ def _configure_codex(ctx: HarnessContext) -> dict[str, Any]:
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
 
     user_config = _codex_user_config_path()
-    _upsert_codex_user_config(user_config, model_id=ctx.model_id, base_url=ctx.base_url)
+    _upsert_codex_user_config(
+        user_config,
+        model_id=ctx.model_id,
+        base_url=ctx.base_url,
+        api_key=ctx.api_key,
+    )
     console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
     return {"config_path": str(config_path), "user_config_path": str(user_config)}
 
@@ -411,12 +418,12 @@ def _launch_codex(workspace: Path, *, model_id: str) -> None:
     # Codex ignores model_providers in project-local config, so re-sync the
     # user-level file on every launch (same pattern as Copilot).
     user_config = _codex_user_config_path()
-    _upsert_codex_user_config(user_config, model_id=model_id, base_url=base_url)
+    _upsert_codex_user_config(
+        user_config, model_id=model_id, base_url=base_url, api_key=api_key
+    )
     console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
 
-    env = os.environ.copy()
-    env[CODEX_ENV_KEY] = api_key
-    _exec_harness("codex", ["codex"], env=env)
+    _exec_harness("codex", ["codex"])
 
 
 def _exec_harness(
