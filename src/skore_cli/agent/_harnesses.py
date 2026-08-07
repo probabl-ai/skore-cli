@@ -1,15 +1,18 @@
 """Harness registry, detection and per-harness configuration writers.
 
-Supported harnesses: Claude, OpenCode, Pi and GitHub Copilot. Each writer
-mirrors the copy-pastable setup snippets from the Skore Hub agent-setup UI.
+Supported harnesses: Claude, OpenCode, Pi, GitHub Copilot and Codex. Each
+writer mirrors the copy-pastable setup snippets from the Skore Hub agent-setup
+UI.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,6 +37,14 @@ export const SkoreSessionPlugin = async () => ({
 COPILOT_PROVIDER_NAME = "Skore Agent"
 COPILOT_PROJECT_CONFIG = ".vscode/chatLanguageModels.json"
 COPILOT_BINARIES = ("code", "code-insiders")
+CODEX_PROVIDER_KEY = "skore"
+CODEX_PROVIDER_NAME = "Skore Agent"
+CODEX_PROJECT_CONFIG = ".codex/skore-provider.toml"
+CODEX_ENV_KEY = "SKORE_API_KEY"
+_CODEX_PROVIDER_SECTION = re.compile(
+    r"^\[model_providers\.skore\](?:\n(?:[^[\n].*)?)*\n?",
+    re.MULTILINE,
+)
 
 
 @dataclass(frozen=True)
@@ -244,6 +255,92 @@ def _detect_copilot(_workspace: Path) -> bool:
     return _resolve_copilot_binary() is not None
 
 
+def _detect_codex(_workspace: Path) -> bool:
+    return shutil.which("codex") is not None
+
+
+def _codex_user_config_path(*, home: Path | None = None) -> Path:
+    """Return the user-level Codex ``config.toml`` path."""
+    home = home or Path.home()
+    return home / ".codex" / "config.toml"
+
+
+def _codex_provider_block(*, base_url: str) -> str:
+    return (
+        f"[model_providers.{CODEX_PROVIDER_KEY}]\n"
+        f'name = "{CODEX_PROVIDER_NAME}"\n'
+        f'base_url = "{base_url}"\n'
+        f'env_key = "{CODEX_ENV_KEY}"\n'
+        'wire_api = "responses"\n'
+    )
+
+
+def _set_toml_root_string(text: str, key: str, value: str) -> str:
+    """Set a top-level string key without touching nested tables."""
+    match = re.search(r"^\[", text, re.MULTILINE)
+    root = text if match is None else text[: match.start()]
+    rest = "" if match is None else text[match.start() :]
+    line = f'{key} = "{value}"'
+    pattern = re.compile(rf"^{re.escape(key)}\s*=\s*.*$", re.MULTILINE)
+    if pattern.search(root):
+        root = pattern.sub(line, root, count=1)
+    else:
+        root = (root.rstrip() + "\n" if root.strip() else "") + line + "\n"
+    if rest and not root.endswith("\n"):
+        root += "\n"
+    return root + rest
+
+
+def _upsert_codex_user_config(
+    user_config_path: Path, *, model_id: str, base_url: str
+) -> None:
+    """Upsert the Skore provider into the user-level Codex config."""
+    text = ""
+    if user_config_path.is_file():
+        text = user_config_path.read_text()
+        if text.strip():
+            try:
+                tomllib.loads(text)
+            except tomllib.TOMLDecodeError as error:
+                raise RuntimeError(
+                    f"could not parse {user_config_path}; "
+                    "fix the file or add the Skore Agent provider manually."
+                ) from error
+
+    text = _CODEX_PROVIDER_SECTION.sub("", text)
+    text = _set_toml_root_string(text, "model", model_id)
+    text = _set_toml_root_string(text, "model_provider", CODEX_PROVIDER_KEY)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    if text.strip() and not text.endswith("\n\n"):
+        text = text.rstrip("\n") + "\n\n"
+    text += _codex_provider_block(base_url=base_url)
+    user_config_path.parent.mkdir(parents=True, exist_ok=True)
+    user_config_path.write_text(text)
+
+
+def _configure_codex(ctx: HarnessContext) -> dict[str, Any]:
+    """Write project Codex provider file and sync ``~/.codex/config.toml``."""
+    config_path = ctx.workspace / CODEX_PROJECT_CONFIG
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = (
+        f'model = "{ctx.model_id}"\n'
+        f'model_provider = "{CODEX_PROVIDER_KEY}"\n'
+        f'base_url = "{ctx.base_url}"\n'
+        f'api_key = "{ctx.api_key}"\n'
+    )
+    config_path.write_text(payload)
+    ensure_gitignore_entry(ctx.workspace, CODEX_PROJECT_CONFIG)
+    console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
+
+    user_config = _codex_user_config_path()
+    _upsert_codex_user_config(
+        user_config, model_id=ctx.model_id, base_url=ctx.base_url
+    )
+    console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
+    return {"config_path": str(config_path), "user_config_path": str(user_config)}
+
+
 def launch_harness(
     name: str, workspace: Path, *, model_id: str = DEFAULT_MODEL_ID
 ) -> None:
@@ -299,6 +396,31 @@ def _launch_copilot(workspace: Path, *, model_id: str) -> None:
     _exec_harness(binary, [binary, str(workspace)])
 
 
+def _launch_codex(workspace: Path, *, model_id: str) -> None:
+    project_config = workspace / CODEX_PROJECT_CONFIG
+    if not project_config.is_file():
+        raise RuntimeError(
+            f"missing {CODEX_PROJECT_CONFIG}; run skore agent --harness codex first."
+        )
+    data = tomllib.loads(project_config.read_text())
+    base_url = data.get("base_url")
+    api_key = data.get("api_key")
+    if not isinstance(base_url, str) or not base_url:
+        raise RuntimeError(f"{CODEX_PROJECT_CONFIG} is missing a valid base_url.")
+    if not isinstance(api_key, str) or not api_key:
+        raise RuntimeError(f"{CODEX_PROJECT_CONFIG} is missing a valid api_key.")
+
+    # Codex ignores model_providers in project-local config, so re-sync the
+    # user-level file on every launch (same pattern as Copilot).
+    user_config = _codex_user_config_path()
+    _upsert_codex_user_config(user_config, model_id=model_id, base_url=base_url)
+    console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
+
+    env = os.environ.copy()
+    env[CODEX_ENV_KEY] = api_key
+    _exec_harness("codex", ["codex"], env=env)
+
+
 def _exec_harness(
     name: str, argv: list[str], *, env: dict[str, str] | None = None
 ) -> None:
@@ -313,6 +435,7 @@ _LAUNCHERS = {
     "opencode": _launch_opencode,
     "pi": _launch_pi,
     "copilot": _launch_copilot,
+    "codex": _launch_codex,
 }
 
 
@@ -351,6 +474,12 @@ HARNESSES: dict[str, Harness] = {
         "GitHub Copilot",
         _detect_copilot,
         _configure_copilot,
+    ),
+    "codex": Harness(
+        "codex",
+        "Codex",
+        _detect_codex,
+        _configure_codex,
     ),
 }
 

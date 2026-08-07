@@ -190,7 +190,7 @@ def agent(
     harness config, and launches the agent. Later runs reuse ``.skore`` in the
     project directory.
 
-    Supported harnesses: Claude, OpenCode, Pi and GitHub Copilot
+    Supported harnesses: Claude, OpenCode, Pi, GitHub Copilot and Codex
     (must be on ``PATH``).
     """
     workspace = workspace.resolve()
