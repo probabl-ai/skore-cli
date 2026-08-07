@@ -72,6 +72,8 @@ def test_opencode_writes_session_plugin(tmp_path):
     assert "chat.headers" in source
     assert "X-Skore-Session-Id" in source
     assert "sessionID" in source
+    ignored = (tmp_path / ".gitignore").read_text().splitlines()
+    assert ".opencode/plugins/skore-session.js" in ignored
 
 
 def test_pi_config_matches_hub_ui(tmp_path):

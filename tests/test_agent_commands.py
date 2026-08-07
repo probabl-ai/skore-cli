@@ -216,7 +216,7 @@ def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
     assert saved["api_key"] == "new-secret"
     assert saved["workspace"] == "ws-1"
-    assert (tmp_path / ".gitignore").read_text().strip().endswith(".skore")
+    assert ".skore" in (tmp_path / ".gitignore").read_text().splitlines()
 
 
 def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
