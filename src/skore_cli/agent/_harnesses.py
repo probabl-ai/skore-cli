@@ -334,9 +334,7 @@ def _configure_codex(ctx: HarnessContext) -> dict[str, Any]:
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
 
     user_config = _codex_user_config_path()
-    _upsert_codex_user_config(
-        user_config, model_id=ctx.model_id, base_url=ctx.base_url
-    )
+    _upsert_codex_user_config(user_config, model_id=ctx.model_id, base_url=ctx.base_url)
     console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
     return {"config_path": str(config_path), "user_config_path": str(user_config)}
 

@@ -393,6 +393,14 @@ def test_detect_codex_by_binary(tmp_path, monkeypatch):
     assert detect_harnesses(tmp_path) == ["codex"]
 
 
+def test_codex_user_config_path(tmp_path, monkeypatch):
+    assert _harnesses._codex_user_config_path(home=tmp_path) == (
+        tmp_path / ".codex" / "config.toml"
+    )
+    monkeypatch.setattr(_harnesses.Path, "home", classmethod(lambda cls: tmp_path))
+    assert _harnesses._codex_user_config_path() == tmp_path / ".codex" / "config.toml"
+
+
 def test_configure_codex_writes_project_and_user_config(tmp_path, monkeypatch):
     user_home = tmp_path / "home"
     user_config = user_home / ".codex" / "config.toml"
@@ -404,9 +412,7 @@ def test_configure_codex_writes_project_and_user_config(tmp_path, monkeypatch):
 
     HARNESSES["codex"].configure(_ctx(tmp_path))
 
-    project = tomllib.loads(
-        (tmp_path / ".codex" / "skore-provider.toml").read_text()
-    )
+    project = tomllib.loads((tmp_path / ".codex" / "skore-provider.toml").read_text())
     assert project["model"] == "skore-agent"
     assert project["model_provider"] == "skore"
     assert project["base_url"] == "http://hub.test/v1"
@@ -445,6 +451,34 @@ def test_upsert_codex_user_config_preserves_other_providers(tmp_path):
     assert data["model_providers"]["skore"]["base_url"] == "http://hub.test/v1"
 
 
+def test_set_toml_root_string_prepends_key_before_table():
+    updated = _harnesses._set_toml_root_string(
+        '[model_providers.other]\nname = "Other"\n',
+        "model",
+        "skore-agent",
+    )
+    assert updated.startswith('model = "skore-agent"\n[model_providers.other]\n')
+
+
+def test_upsert_codex_user_config_handles_empty_and_unterminated_root(tmp_path):
+    empty = tmp_path / "empty.toml"
+    empty.write_text("   \n")
+    _harnesses._upsert_codex_user_config(
+        empty, model_id="skore-agent", base_url="http://hub.test/v1"
+    )
+    assert tomllib.loads(empty.read_text())["model"] == "skore-agent"
+
+    # Both root keys present, no trailing newline → separator branch in upsert.
+    unterminated = tmp_path / "unterminated.toml"
+    unterminated.write_text('model = "other"\nmodel_provider = "openrouter"')
+    _harnesses._upsert_codex_user_config(
+        unterminated, model_id="skore-agent", base_url="http://hub.test/v1"
+    )
+    data = tomllib.loads(unterminated.read_text())
+    assert data["model"] == "skore-agent"
+    assert data["model_provider"] == "skore"
+
+
 def test_launch_codex_sets_env_and_resyncs(tmp_path, monkeypatch):
     user_config = tmp_path / "home" / ".codex" / "config.toml"
     monkeypatch.setattr(
@@ -473,6 +507,60 @@ def test_launch_codex_sets_env_and_resyncs(tmp_path, monkeypatch):
     assert captured["argv"] == ["codex"]
     assert captured["env"]["SKORE_API_KEY"] == "secret-key"
     assert user_config.is_file()
+
+
+def test_launch_codex_errors_when_project_config_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        _harnesses.shutil,
+        "which",
+        lambda cmd: "/usr/bin/codex" if cmd == "codex" else None,
+    )
+    with pytest.raises(RuntimeError, match="missing .codex/skore-provider.toml"):
+        _harnesses.launch_harness("codex", tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        (
+            'model = "skore-agent"\nmodel_provider = "skore"\napi_key = "secret-key"\n',
+            "missing a valid base_url",
+        ),
+        (
+            'model = "skore-agent"\n'
+            'model_provider = "skore"\n'
+            'base_url = ""\n'
+            'api_key = "secret-key"\n',
+            "missing a valid base_url",
+        ),
+        (
+            'model = "skore-agent"\n'
+            'model_provider = "skore"\n'
+            'base_url = "http://hub.test/v1"\n',
+            "missing a valid api_key",
+        ),
+        (
+            'model = "skore-agent"\n'
+            'model_provider = "skore"\n'
+            'base_url = "http://hub.test/v1"\n'
+            'api_key = ""\n',
+            "missing a valid api_key",
+        ),
+    ],
+)
+def test_launch_codex_errors_when_project_config_invalid(
+    tmp_path, monkeypatch, payload, match
+):
+    config = tmp_path / ".codex" / "skore-provider.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(payload)
+    monkeypatch.setattr(
+        _harnesses.shutil,
+        "which",
+        lambda cmd: "/usr/bin/codex" if cmd == "codex" else None,
+    )
+    with pytest.raises(RuntimeError, match=match):
+        _harnesses.launch_harness("codex", tmp_path)
 
 
 def test_upsert_codex_user_config_errors_on_corrupt_toml(tmp_path):
