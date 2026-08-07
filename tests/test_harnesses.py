@@ -65,12 +65,26 @@ def test_opencode_config_matches_hub_ui(tmp_path):
     assert config["provider"]["skore"]["models"]["skore-agent"]["name"] == "Skore Agent"
 
 
+def test_opencode_writes_session_plugin(tmp_path):
+    HARNESSES["opencode"].configure(_ctx(tmp_path))
+    plugin = tmp_path / ".opencode" / "plugins" / "skore-session.js"
+    source = plugin.read_text()
+    assert "chat.headers" in source
+    assert "X-Skore-Session-Id" in source
+    assert "sessionID" in source
+    ignored = (tmp_path / ".gitignore").read_text().splitlines()
+    assert ".opencode/plugins/skore-session.js" in ignored
+
+
 def test_pi_config_matches_hub_ui(tmp_path):
     HARNESSES["pi"].configure(_ctx(tmp_path))
     config = json.loads((tmp_path / ".pi" / "agent" / "models.json").read_text())
     model = config["providers"]["skore"]["models"][0]
     assert model["id"] == "skore-agent"
     assert model["contextWindow"] == 200000
+    compat = config["providers"]["skore"]["compat"]
+    assert compat["sendSessionAffinityHeaders"] is True
+    assert compat["sessionAffinityFormat"] == "openrouter"
 
 
 def test_launch_opencode_passes_model_flag(tmp_path, monkeypatch):
