@@ -8,12 +8,13 @@
 
 Command-line interface for [skore](https://github.com/probabl-ai/skore).
 
-`skore-cli` installs a single `skore` command with two areas:
+`skore-cli` installs a single `skore` command with three areas:
 
 - **skills** — discover, install and manage [Agent Skills](https://agentskills.io)
   from the [probabl-ai/skills](https://github.com/probabl-ai/skills) catalog
 - **agent** — connect a project to the Skore Hub agent, write harness config
   and launch a local coding agent
+- **sync** — synchronize report projects across local storage, Skore Hub, and MLflow
 
 ## Installation
 
@@ -53,6 +54,26 @@ skore agent
 skore agent --harness claude    # non-interactive harness choice
 skore agent --workspace ./myapp # configure another project directory
 ```
+
+### Sync
+
+Synchronize a source project to a destination mode. The source defaults to local when
+only `--to` is set; the destination defaults to local when only `--from` is set.
+
+```bash
+# Local -> Hub (add --both or --dry-run as needed)
+SKORE_HUB_API_KEY=... skore sync experiment --to=hub --to-workspace=team
+
+# Hub -> local with a different project name
+SKORE_HUB_API_KEY=... skore sync production \
+  --from=hub --from-workspace=team --to-project=downloaded
+
+# Local -> MLflow
+skore sync experiment --to=mlflow --to-tracking-uri=http://localhost:5000
+```
+
+Hub synchronization requires `SKORE_HUB_API_KEY`. Use `--hub-url` to target a custom
+Hub API. Install `skore[mlflow]` to synchronize with MLflow.
 
 ## Agent detection
 
