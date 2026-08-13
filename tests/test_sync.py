@@ -116,6 +116,27 @@ def test_sync_reuses_one_mlflow_tracking_uri(projects):
     ]
 
 
+def test_sync_reuses_destination_mlflow_tracking_uri(projects):
+    created, _ = projects
+
+    result = CliRunner().invoke(
+        sync,
+        [
+            "source",
+            "--from=mlflow",
+            "--to=mlflow",
+            "--to-project=destination",
+            "--to-tracking-uri=http://mlflow.test",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert [project.tracking_uri for project in created] == [
+        "http://mlflow.test",
+        "http://mlflow.test",
+    ]
+
+
 @pytest.mark.parametrize(
     ("args", "message"),
     [
@@ -128,6 +149,19 @@ def test_sync_reuses_one_mlflow_tracking_uri(projects):
         (
             ["experiment", "--from=mlflow", "--to=local", "--hub-url=http://hub.test"],
             "--hub-url requires a Hub endpoint",
+        ),
+        (
+            ["experiment", "--from=local", "--from-tracking-uri=http://mlflow.test"],
+            "--from-tracking-uri is only valid for MLflow",
+        ),
+        (
+            [
+                "experiment",
+                "--to=hub",
+                "--to-workspace=team",
+                "--to-tracking-uri=http://mlflow.test",
+            ],
+            "--to-tracking-uri is only valid for MLflow",
         ),
     ],
 )
@@ -185,3 +219,45 @@ def test_sync_requires_skore_with_sync(monkeypatch):
 
     assert result.exit_code != 0
     assert "skore>=0.24.0" in result.output
+
+
+def test_project_api_imports_supported_skore(monkeypatch):
+    project = type("Project", (), {"sync": None})
+    login = object()
+    monkeypatch.setattr(
+        _commands.importlib,
+        "import_module",
+        lambda _: SimpleNamespace(Project=project, login=login),
+    )
+
+    assert _commands._project_api() == (project, login)
+
+
+def test_sync_requires_skore(monkeypatch):
+    def import_skore(_):
+        raise ImportError
+
+    monkeypatch.setattr(_commands.importlib, "import_module", import_skore)
+
+    result = CliRunner().invoke(sync, ["experiment", "--to=mlflow"])
+
+    assert result.exit_code != 0
+    assert "needs the `skore` package" in result.output
+
+
+def test_sync_reports_empty_result(capsys):
+    _commands._render_result(pd.DataFrame(), dry_run=False)
+
+    assert capsys.readouterr().out == "No reports to synchronize.\n"
+
+
+def test_sync_converts_backend_errors(monkeypatch):
+    def project(*args, **kwargs):
+        raise RuntimeError("backend error")
+
+    monkeypatch.setattr(_commands, "_project_api", lambda: (project, None))
+
+    result = CliRunner().invoke(sync, ["experiment", "--to=mlflow"])
+
+    assert result.exit_code != 0
+    assert "backend error" in result.output
