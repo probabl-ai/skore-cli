@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,12 @@ from click.testing import CliRunner
 
 from skore_cli.sync import _commands
 from skore_cli.sync._commands import sync
+
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain_output(output: str) -> str:
+    return _ANSI_ESCAPE.sub("", output)
 
 
 @dataclass
@@ -128,7 +135,7 @@ def test_sync_validates_options(args, message):
     result = CliRunner().invoke(sync, args)
 
     assert result.exit_code == 2
-    assert message in result.output
+    assert message in _plain_output(result.output)
 
 
 @pytest.mark.parametrize(
@@ -153,7 +160,7 @@ def test_sync_rejects_invalid_endpoints_before_construction(projects, args, mess
     result = CliRunner().invoke(sync, args)
 
     assert result.exit_code == 2
-    assert message in result.output
+    assert message in _plain_output(result.output)
     assert created == []
 
 
