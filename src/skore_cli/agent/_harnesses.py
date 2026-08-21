@@ -39,7 +39,7 @@ COPILOT_BINARIES = ("code", "code-insiders")
 CODEX_PROVIDER_KEY = "skore"
 CODEX_PROVIDER_NAME = "Skore Agent"
 CODEX_PROJECT_CONFIG = ".codex/skore-provider.toml"
-CODEX_PROFILE_NAME = "skore"
+CODEX_API_KEY_ENV = "SKORE_AGENT_API_KEY"
 
 
 @dataclass(frozen=True)
@@ -258,18 +258,6 @@ def _detect_codex(_workspace: Path) -> bool:
     return shutil.which("codex") is not None
 
 
-def _codex_profile_config_path(*, home: Path | None = None) -> Path:
-    """Return the Codex profile file that selects the Skore provider.
-
-    Codex reads all configuration from ``CODEX_HOME`` (default ``~/.codex``),
-    so the profile file must live there even when the variable is overridden.
-    """
-    if home is None:
-        codex_home = os.environ.get("CODEX_HOME")
-        home = Path(codex_home) if codex_home else Path.home() / ".codex"
-    return home / f"{CODEX_PROFILE_NAME}.config.toml"
-
-
 def _toml_string(value: str) -> str:
     """Quote ``value`` as a TOML basic string.
 
@@ -279,34 +267,31 @@ def _toml_string(value: str) -> str:
     return json.dumps(value)
 
 
-def _write_codex_profile(
-    profile_path: Path, *, model_id: str, base_url: str, api_key: str
-) -> None:
-    """Write the standalone Skore profile loaded by ``codex --profile skore``.
+def _codex_config_overrides(base_url: str) -> list[str]:
+    """Build the runtime ``--config`` overrides that declare the provider.
 
-    Codex only resolves ``model_providers`` from user-level configuration, so
-    the provider lives in a dedicated profile file. Keeping it out of
-    ``config.toml`` leaves plain ``codex`` on the user's default model.
-
-    The key is embedded in the profile rather than read through ``env_key``:
-    Codex refuses to start when the named variable is unset, and embedding
-    keeps ``codex --profile skore`` usable outside ``skore agent``.
+    Codex refuses ``model_providers`` in project-local config files, so the
+    provider is passed per run instead. The API key is referenced through
+    ``env_http_headers`` (header name -> environment variable): it travels in
+    the process environment and never appears on the command line.
     """
-    profile_path.parent.mkdir(parents=True, exist_ok=True)
-    profile_path.write_text(
-        f"model = {_toml_string(model_id)}\n"
-        f"model_provider = {_toml_string(CODEX_PROVIDER_KEY)}\n"
-        "\n"
-        f"[model_providers.{CODEX_PROVIDER_KEY}]\n"
-        f"name = {_toml_string(CODEX_PROVIDER_NAME)}\n"
-        f"base_url = {_toml_string(base_url)}\n"
-        'wire_api = "responses"\n'
-        f'http_headers = {{ "X-API-Key" = {_toml_string(api_key)} }}\n'
-    )
+    provider = f"model_providers.{CODEX_PROVIDER_KEY}"
+    return [
+        f"model_provider={_toml_string(CODEX_PROVIDER_KEY)}",
+        f"{provider}.name={_toml_string(CODEX_PROVIDER_NAME)}",
+        f"{provider}.base_url={_toml_string(base_url)}",
+        f'{provider}.wire_api="responses"',
+        f'{provider}.env_http_headers={{ "X-API-Key" = "{CODEX_API_KEY_ENV}" }}',
+    ]
 
 
 def _configure_codex(ctx: HarnessContext) -> dict[str, Any]:
-    """Write project Codex provider file and the Skore Codex profile."""
+    """Write the project-local Codex provider file.
+
+    Everything lives in the workspace so each worktree keeps its own hub
+    credentials; nothing is written under ``~/.codex`` and plain ``codex``
+    runs keep the user's default model.
+    """
     config_path = ctx.workspace / CODEX_PROJECT_CONFIG
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(
@@ -317,23 +302,12 @@ def _configure_codex(ctx: HarnessContext) -> dict[str, Any]:
     )
     ensure_gitignore_entry(ctx.workspace, CODEX_PROJECT_CONFIG)
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
-
-    profile_path = _codex_profile_config_path()
-    _write_codex_profile(
-        profile_path,
-        model_id=ctx.model_id,
-        base_url=ctx.base_url,
-        api_key=ctx.api_key,
-    )
-    console.print(f"[skore.ok]+[/] wrote [skore.path]{profile_path}[/]")
     console.print(
-        "[skore.muted]Note:[/] [skore.path]config.toml[/] "
-        "[skore.muted]is untouched: plain[/] [skore.skill]codex[/] "
-        "[skore.muted]keeps your default model. Use[/] "
-        f"[skore.skill]codex --profile {CODEX_PROFILE_NAME}[/] "
-        "[skore.muted]to run the Skore hub model directly.[/]"
+        "[skore.muted]Note:[/] configuration is project-local and "
+        "[skore.path]~/.codex[/] [skore.muted]is untouched. Launch through[/] "
+        "[skore.skill]skore agent[/] [skore.muted]to use the Skore hub model.[/]"
     )
-    return {"config_path": str(config_path), "profile_path": str(profile_path)}
+    return {"config_path": str(config_path)}
 
 
 def launch_harness(
@@ -436,16 +410,15 @@ def _launch_codex(workspace: Path, *, model_id: str) -> None:
     if not isinstance(model, str) or not model:
         model = model_id
 
-    # Codex only resolves model_providers from user-level configuration, so
-    # re-sync the dedicated profile file on every launch (same pattern as
-    # Copilot, with the project file as the source of truth).
-    profile_path = _codex_profile_config_path()
-    _write_codex_profile(
-        profile_path, model_id=model, base_url=base_url, api_key=api_key
-    )
-    console.print(f"[skore.ok]+[/] synced [skore.path]{profile_path}[/]")
-
-    _exec_harness("codex", ["codex", "--profile", CODEX_PROFILE_NAME])
+    # Codex refuses model_providers in project-local config files, so the
+    # provider rides on runtime --config overrides and the API key on the
+    # process environment; nothing outside the workspace is read or written.
+    env = os.environ.copy()
+    env[CODEX_API_KEY_ENV] = api_key
+    argv = ["codex", "--model", model]
+    for override in _codex_config_overrides(base_url):
+        argv += ["--config", override]
+    _exec_harness("codex", argv, env=env)
 
 
 def _exec_harness(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import tomllib
+from typing import Any
 
 import pytest
 
@@ -489,32 +490,16 @@ def test_detect_codex_by_binary(tmp_path, monkeypatch):
     assert detect_harnesses(tmp_path) == ["codex"]
 
 
-def test_codex_profile_config_path(tmp_path, monkeypatch):
+def _codex_home(tmp_path, monkeypatch):
+    """Point ``Path.home`` at a scratch dir to detect any global write."""
     monkeypatch.delenv("CODEX_HOME", raising=False)
-    assert _harnesses._codex_profile_config_path(home=tmp_path) == (
-        tmp_path / "skore.config.toml"
-    )
-    monkeypatch.setattr(_harnesses.Path, "home", classmethod(lambda cls: tmp_path))
-    assert _harnesses._codex_profile_config_path() == (
-        tmp_path / ".codex" / "skore.config.toml"
-    )
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "custom"))
-    assert _harnesses._codex_profile_config_path() == (
-        tmp_path / "custom" / "skore.config.toml"
-    )
+    home = tmp_path / "home"
+    monkeypatch.setattr(_harnesses.Path, "home", classmethod(lambda cls: home))
+    return home
 
 
-def _codex_profile_path(tmp_path, monkeypatch):
-    profile = tmp_path / "home" / ".codex" / "skore.config.toml"
-    monkeypatch.setattr(
-        _harnesses, "_codex_profile_config_path", lambda home=None: profile
-    )
-    return profile
-
-
-def _prepare_codex_launch(tmp_path, monkeypatch):
-    profile = _codex_profile_path(tmp_path, monkeypatch)
-    captured: dict[str, object] = {}
+def _prepare_codex_launch(tmp_path, monkeypatch) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
 
     def fake_exec(name, argv, *, env=None):
         captured["argv"] = argv
@@ -526,11 +511,18 @@ def _prepare_codex_launch(tmp_path, monkeypatch):
         lambda cmd: "/usr/bin/codex" if cmd == "codex" else None,
     )
     monkeypatch.setattr(_harnesses, "_exec_harness", fake_exec)
-    return profile, captured
+    return captured
 
 
-def test_configure_codex_writes_project_and_profile(tmp_path, monkeypatch):
-    profile = _codex_profile_path(tmp_path, monkeypatch)
+def _parse_config_overrides(argv: list[str]) -> dict[str, object]:
+    """Parse the ``--config key=value`` tail of a codex argv as one TOML doc."""
+    overrides = argv[4::2]
+    assert argv[3::2] == ["--config"] * len(overrides)
+    return tomllib.loads("\n".join(overrides))
+
+
+def test_configure_codex_writes_project_config_only(tmp_path, monkeypatch):
+    home = _codex_home(tmp_path, monkeypatch)
 
     HARNESSES["codex"].configure(_ctx(tmp_path))
 
@@ -539,92 +531,57 @@ def test_configure_codex_writes_project_and_profile(tmp_path, monkeypatch):
     assert project["model_provider"] == "skore"
     assert project["base_url"] == "http://hub.test/v1"
     assert project["api_key"] == "secret-key"
-
-    data = tomllib.loads(profile.read_text())
-    assert data["model"] == "skore-agent"
-    assert data["model_provider"] == "skore"
-    provider = data["model_providers"]["skore"]
-    assert provider["name"] == "Skore Agent"
-    assert provider["base_url"] == "http://hub.test/v1"
-    assert provider["wire_api"] == "responses"
-    assert provider["http_headers"] == {"X-API-Key": "secret-key"}
-    assert "env_key" not in provider
+    gitignore = (tmp_path / ".gitignore").read_text().splitlines()
+    assert ".codex/skore-provider.toml" in gitignore
+    assert not home.exists()
 
 
-def test_configure_codex_leaves_user_config_untouched(tmp_path, monkeypatch):
-    profile = _codex_profile_path(tmp_path, monkeypatch)
-    user_config = profile.parent / "config.toml"
-    user_config.parent.mkdir(parents=True)
-    original = (
-        "# my codex setup\n"
-        'model = "gpt-5.1"\n'
-        'model_provider = "openrouter"\n'
-        "\n"
-        "[model_providers.openrouter]\n"
-        'name = "OpenRouter"\n'
-        'base_url = "https://openrouter.ai/api/v1"\n'
-        'env_key = "OPENROUTER_API_KEY"\n'
+def test_configure_codex_overwrites_previous_project_config(tmp_path):
+    stale = HarnessContext(
+        workspace=tmp_path, hub_url="http://old.test", api_key="old-key"
     )
-    user_config.write_text(original)
-
+    HARNESSES["codex"].configure(stale)
     HARNESSES["codex"].configure(_ctx(tmp_path))
-
-    assert user_config.read_text() == original
-    assert tomllib.loads(profile.read_text())["model"] == "skore-agent"
-
-
-def test_configure_codex_overwrites_stale_profile(tmp_path, monkeypatch):
-    profile = _codex_profile_path(tmp_path, monkeypatch)
-    profile.parent.mkdir(parents=True)
-    profile.write_text(
-        'model = "skore-agent"\n'
-        'model_provider = "skore"\n'
-        "\n"
-        "[model_providers.skore]\n"
-        'name = "Skore Agent"\n'
-        'base_url = "http://old.test/v1"\n'
-        'env_key = "SKORE_API_KEY"\n'
-        'wire_api = "responses"\n'
-    )
-
-    HARNESSES["codex"].configure(_ctx(tmp_path))
-
-    provider = tomllib.loads(profile.read_text())["model_providers"]["skore"]
-    assert provider["base_url"] == "http://hub.test/v1"
-    assert "env_key" not in provider
-    assert provider["http_headers"] == {"X-API-Key": "secret-key"}
+    project = tomllib.loads((tmp_path / ".codex" / "skore-provider.toml").read_text())
+    assert project["base_url"] == "http://hub.test/v1"
+    assert project["api_key"] == "secret-key"
 
 
-def test_configure_codex_escapes_toml_special_characters(tmp_path, monkeypatch):
-    profile = _codex_profile_path(tmp_path, monkeypatch)
+def test_configure_codex_escapes_toml_special_characters(tmp_path):
     api_key = 'sec"ret\\key'
     ctx = HarnessContext(workspace=tmp_path, hub_url="http://hub.test", api_key=api_key)
 
     HARNESSES["codex"].configure(ctx)
 
-    provider = tomllib.loads(profile.read_text())["model_providers"]["skore"]
-    assert provider["http_headers"] == {"X-API-Key": api_key}
     project = tomllib.loads((tmp_path / ".codex" / "skore-provider.toml").read_text())
     assert project["api_key"] == api_key
 
 
-def test_launch_codex_resyncs_profile(tmp_path, monkeypatch):
-    profile, captured = _prepare_codex_launch(tmp_path, monkeypatch)
+def test_launch_codex_passes_provider_as_runtime_overrides(tmp_path, monkeypatch):
+    home = _codex_home(tmp_path, monkeypatch)
+    captured = _prepare_codex_launch(tmp_path, monkeypatch)
     HARNESSES["codex"].configure(_ctx(tmp_path))
-    profile.unlink()
 
     _harnesses.launch_harness("codex", tmp_path, model_id="skore-agent")
 
-    assert captured["argv"] == ["codex", "--profile", "skore"]
-    assert captured["env"] is None
-    data = tomllib.loads(profile.read_text())
-    assert data["model"] == "skore-agent"
+    argv = captured["argv"]
+    assert argv[:3] == ["codex", "--model", "skore-agent"]
+    data = _parse_config_overrides(argv)
+    assert data["model_provider"] == "skore"
     provider = data["model_providers"]["skore"]
-    assert provider["http_headers"] == {"X-API-Key": "secret-key"}
+    assert provider["name"] == "Skore Agent"
+    assert provider["base_url"] == "http://hub.test/v1"
+    assert provider["wire_api"] == "responses"
+    assert provider["env_http_headers"] == {"X-API-Key": "SKORE_AGENT_API_KEY"}
+    assert "http_headers" not in provider
+    assert "env_key" not in provider
+    assert "secret-key" not in argv  # the key never rides the command line
+    assert captured["env"]["SKORE_AGENT_API_KEY"] == "secret-key"
+    assert not home.exists()
 
 
 def test_launch_codex_prefers_project_model(tmp_path, monkeypatch):
-    profile, captured = _prepare_codex_launch(tmp_path, monkeypatch)
+    captured = _prepare_codex_launch(tmp_path, monkeypatch)
     config = tmp_path / ".codex" / "skore-provider.toml"
     config.parent.mkdir(parents=True)
     config.write_text(
@@ -636,19 +593,18 @@ def test_launch_codex_prefers_project_model(tmp_path, monkeypatch):
 
     _harnesses.launch_harness("codex", tmp_path, model_id="skore-agent")
 
-    assert captured["argv"] == ["codex", "--profile", "skore"]
-    assert tomllib.loads(profile.read_text())["model"] == "custom-model"
+    assert captured["argv"][:3] == ["codex", "--model", "custom-model"]
 
 
 def test_launch_codex_falls_back_to_model_argument(tmp_path, monkeypatch):
-    profile, _ = _prepare_codex_launch(tmp_path, monkeypatch)
+    captured = _prepare_codex_launch(tmp_path, monkeypatch)
     config = tmp_path / ".codex" / "skore-provider.toml"
     config.parent.mkdir(parents=True)
     config.write_text('base_url = "http://hub.test/v1"\napi_key = "secret-key"\n')
 
     _harnesses.launch_harness("codex", tmp_path, model_id="fallback-model")
 
-    assert tomllib.loads(profile.read_text())["model"] == "fallback-model"
+    assert captured["argv"][:3] == ["codex", "--model", "fallback-model"]
 
 
 def test_launch_codex_errors_when_project_config_missing(tmp_path, monkeypatch):
