@@ -207,11 +207,3 @@ mlflow.db
 mlruns
 
 .claude
-
-# skore agent harness byproducts
-.skore
-.opencode/plugins/skore-session.js
-.vscode/chatLanguageModels.json
-.codex/skore-provider.toml
-.pi/agent/models.json
-opencode.json
