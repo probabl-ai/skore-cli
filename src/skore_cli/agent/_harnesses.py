@@ -176,9 +176,7 @@ def _copilot_provider(ctx: HarnessContext) -> dict[str, Any]:
 def _configure_copilot(ctx: HarnessContext) -> dict[str, Any]:
     """Write ``.vscode/chatLanguageModels.json`` for GitHub Copilot in VS Code."""
     config_path = ctx.workspace / COPILOT_PROJECT_CONFIG
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = [_copilot_provider(ctx)]
-    config_path.write_text(json.dumps(payload, indent=2) + "\n")
+    _upsert_copilot_provider(config_path, _copilot_provider(ctx))
     ensure_gitignore_entry(ctx.workspace, COPILOT_PROJECT_CONFIG)
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
     return {"config_path": str(config_path)}
@@ -216,26 +214,32 @@ def _copilot_user_config_path(binary: str, *, home: Path | None = None) -> Path:
     return home / ".config" / app / "User" / "chatLanguageModels.json"
 
 
-def _upsert_copilot_provider(user_config_path: Path, provider: dict[str, Any]) -> None:
-    """Upsert the Skore provider into a user-level language models file."""
+def _upsert_copilot_provider(config_path: Path, provider: dict[str, Any]) -> None:
+    """Upsert the Skore provider into a language models file."""
     providers: list[Any] = []
-    if user_config_path.is_file():
+    if config_path.is_file():
         try:
-            providers = json.loads(user_config_path.read_text() or "[]")
+            parsed = json.loads(config_path.read_text() or "[]")
         except json.JSONDecodeError as error:
             # Overwriting would silently drop the other providers of the user.
             raise RuntimeError(
-                f"could not parse {user_config_path}; "
-                "add the Skore Agent provider from VS Code instead."
+                f"could not parse {config_path}; "
+                "fix the file or add the Skore Agent provider manually."
             ) from error
+        if not isinstance(parsed, list):
+            raise RuntimeError(
+                f"could not parse {config_path}; "
+                "fix the file or add the Skore Agent provider manually."
+            )
+        providers = parsed
     updated = [
         entry
         for entry in providers
         if not (isinstance(entry, dict) and entry.get("name") == COPILOT_PROVIDER_NAME)
     ]
     updated.append(provider)
-    user_config_path.parent.mkdir(parents=True, exist_ok=True)
-    user_config_path.write_text(json.dumps(updated, indent=2) + "\n")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(updated, indent=2) + "\n")
 
 
 def _detect_opencode(_workspace: Path) -> bool:
@@ -343,6 +347,11 @@ def _configure_codex(ctx: HarnessContext) -> dict[str, Any]:
         api_key=ctx.api_key,
     )
     console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
+    console.print(
+        "[skore.muted]Note:[/] [skore.path]config.toml[/] "
+        "[skore.muted]now makes plain[/] [skore.skill]codex[/] "
+        "[skore.muted]default to the Skore hub model in every project.[/]"
+    )
     return {"config_path": str(config_path), "user_config_path": str(user_config)}
 
 
@@ -390,7 +399,29 @@ def _launch_copilot(workspace: Path, *, model_id: str) -> None:
 
     # VS Code only reads providers from the user profile, so the project config
     # written by ``_configure_copilot`` has to be mirrored there.
-    provider = json.loads((workspace / COPILOT_PROJECT_CONFIG).read_text())[0]
+    project_config = workspace / COPILOT_PROJECT_CONFIG
+    if not project_config.is_file():
+        raise RuntimeError(
+            f"missing {COPILOT_PROJECT_CONFIG}; "
+            "run skore agent --harness copilot first."
+        )
+    try:
+        providers = json.loads(project_config.read_text() or "[]")
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"could not parse {COPILOT_PROJECT_CONFIG}.") from error
+    provider = next(
+        (
+            entry
+            for entry in providers
+            if isinstance(entry, dict) and entry.get("name") == COPILOT_PROVIDER_NAME
+        ),
+        None,
+    )
+    if provider is None:
+        raise RuntimeError(
+            f"{COPILOT_PROJECT_CONFIG} has no {COPILOT_PROVIDER_NAME} provider; "
+            "run skore agent --harness copilot first."
+        )
     user_config = _copilot_user_config_path(binary)
     _upsert_copilot_provider(user_config, provider)
     console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")

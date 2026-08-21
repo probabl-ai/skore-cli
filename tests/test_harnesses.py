@@ -254,6 +254,23 @@ def test_copilot_config_matches_custom_endpoint(tmp_path):
     assert ".vscode/chatLanguageModels.json" in gitignore
 
 
+def test_configure_copilot_preserves_other_entries(tmp_path):
+    config_path = tmp_path / ".vscode" / "chatLanguageModels.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(
+            [{"name": "My Other Endpoint", "vendor": "customendpoint", "models": []}]
+        )
+        + "\n"
+    )
+    HARNESSES["copilot"].configure(_ctx(tmp_path))
+    providers = json.loads(config_path.read_text())
+    assert [entry["name"] for entry in providers] == [
+        "My Other Endpoint",
+        "Skore Agent",
+    ]
+
+
 def test_launch_copilot_prefers_code_and_opens_workspace(tmp_path, monkeypatch):
     HARNESSES["copilot"].configure(_ctx(tmp_path))
     user_root = tmp_path / "vscode-user"
@@ -314,6 +331,77 @@ def test_launch_copilot_errors_when_binary_missing(tmp_path, monkeypatch):
         _harnesses._launch_copilot(tmp_path, model_id="skore-agent")
 
 
+def test_launch_copilot_errors_when_project_config_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        _harnesses.shutil,
+        "which",
+        lambda cmd: "/usr/bin/code" if cmd == "code" else None,
+    )
+    with pytest.raises(RuntimeError, match="missing .vscode/chatLanguageModels.json"):
+        _harnesses._launch_copilot(tmp_path, model_id="skore-agent")
+
+
+def test_launch_copilot_errors_when_project_config_unparsable(tmp_path, monkeypatch):
+    config_path = tmp_path / ".vscode" / "chatLanguageModels.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text("{not json\n")
+    monkeypatch.setattr(
+        _harnesses.shutil,
+        "which",
+        lambda cmd: "/usr/bin/code" if cmd == "code" else None,
+    )
+    with pytest.raises(RuntimeError, match="could not parse"):
+        _harnesses._launch_copilot(tmp_path, model_id="skore-agent")
+
+
+def test_launch_copilot_finds_provider_among_others(tmp_path, monkeypatch):
+    config_path = tmp_path / ".vscode" / "chatLanguageModels.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(
+            [
+                {"name": "My Other Endpoint", "vendor": "customendpoint", "models": []},
+                {
+                    "name": "Skore Agent",
+                    "vendor": "customendpoint",
+                    "apiKey": "skore",
+                    "models": [
+                        {
+                            "id": "skore-agent",
+                            "requestHeaders": {"X-API-Key": "secret-key"},
+                        }
+                    ],
+                },
+            ]
+        )
+        + "\n"
+    )
+    user_root = tmp_path / "vscode-user"
+    captured: dict[str, list[str]] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    monkeypatch.setattr(
+        _harnesses.shutil,
+        "which",
+        lambda cmd: "/usr/bin/code" if cmd == "code" else None,
+    )
+    monkeypatch.setattr(
+        _harnesses,
+        "_copilot_user_config_path",
+        lambda binary, home=None: user_root / binary / "chatLanguageModels.json",
+    )
+    monkeypatch.setattr(_harnesses, "_exec_harness", fake_exec)
+
+    _harnesses.launch_harness("copilot", tmp_path, model_id="skore-agent")
+    assert captured["argv"] == ["code", str(tmp_path)]
+    user_config = user_root / "code" / "chatLanguageModels.json"
+    providers = json.loads(user_config.read_text())
+    assert providers[-1]["name"] == "Skore Agent"
+    assert providers[-1]["models"][0]["requestHeaders"] == {"X-API-Key": "secret-key"}
+
+
 def test_upsert_copilot_provider_preserves_other_entries(tmp_path):
     user_config = tmp_path / "User" / "chatLanguageModels.json"
     user_config.parent.mkdir(parents=True)
@@ -349,6 +437,14 @@ def test_upsert_copilot_provider_errors_on_unparsable_file(tmp_path):
     user_config = tmp_path / "User" / "chatLanguageModels.json"
     user_config.parent.mkdir(parents=True)
     user_config.write_text("// comments are not valid JSON\n[]\n")
+    with pytest.raises(RuntimeError, match="could not parse"):
+        _harnesses._upsert_copilot_provider(user_config, {"name": "Skore Agent"})
+
+
+def test_upsert_copilot_provider_errors_on_non_list_file(tmp_path):
+    user_config = tmp_path / "User" / "chatLanguageModels.json"
+    user_config.parent.mkdir(parents=True)
+    user_config.write_text('{"name": "not a list"}\n')
     with pytest.raises(RuntimeError, match="could not parse"):
         _harnesses._upsert_copilot_provider(user_config, {"name": "Skore Agent"})
 
