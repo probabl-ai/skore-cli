@@ -17,11 +17,16 @@ def _login_module():
     return _auth("login")
 
 
+def api_key() -> str | None:
+    """Return the API key supplied for non-interactive authentication."""
+    return os.environ.get(API_KEY_ENV) or None
+
+
 def auth_kind() -> AuthKind:
     """Return how the current process authenticates to the hub."""
     credentials = _login_module().credentials
     if credentials is None:
-        if os.environ.get(API_KEY_ENV):
+        if api_key():
             return "api_key"
         return "none"
     headers = credentials()
@@ -47,8 +52,8 @@ def ensure_login(*, timeout: int = 600) -> str:
     """Ensure an interactive session exists and return its bearer access token."""
     if auth_kind() == "api_key":
         raise click.ClickException(
-            "set up a workspace API key with an interactive login first; "
-            f"`{API_KEY_ENV}` alone cannot mint project keys."
+            f"API key authentication cannot start browser login; set {API_KEY_ENV} "
+            "and run `skore agent` instead."
         )
 
     login_mod = _login_module()
@@ -57,7 +62,7 @@ def ensure_login(*, timeout: int = 600) -> str:
 
     token = bearer_token()
     if not token:
-        raise click.ClickException("not logged in; run `skore agent` again.")
+        raise click.ClickException("not logged in; run `skore login` again.")
     return token
 
 

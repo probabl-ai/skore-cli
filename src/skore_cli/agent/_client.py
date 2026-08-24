@@ -1,7 +1,7 @@
-"""Thin HTTP client for the hub API used by the ``skore agent`` command.
+"""Thin HTTP client for the hub API used by the ``skore login`` command.
 
 Pure, testable functions over the hub's ``/identity`` endpoints, limited to what
-``skore agent`` needs: reading the user's profile and minting a workspace-scoped
+``skore login`` needs: reading the user's profile and minting a workspace-scoped
 API key. ``httpx`` is imported lazily inside the calls so building the CLI stays
 cheap. All calls authenticate with the stored interactive login token as a
 bearer.
@@ -60,7 +60,7 @@ def _raise_for(response: Any, *, context: str) -> None:
     detail = detail or (response.text or "").strip() or "no details"
     if code == 401:
         raise click.ClickException(
-            f"authentication failed while {context}; run `skore agent` again."
+            f"authentication failed while {context}; run `skore login` again."
         )
     if code == 403:
         raise click.ClickException(f"not allowed while {context} ({detail}).")

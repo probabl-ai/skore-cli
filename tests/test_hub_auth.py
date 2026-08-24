@@ -29,6 +29,16 @@ def _make_login(*, credentials=None):
     return lambda name: login_mod
 
 
+def test_api_key_reads_environment(monkeypatch):
+    monkeypatch.setenv("SKORE_HUB_API_KEY", "uid:secret")
+    assert _hub_auth.api_key() == "uid:secret"
+
+
+def test_api_key_returns_none_when_unset(monkeypatch):
+    monkeypatch.delenv("SKORE_HUB_API_KEY", raising=False)
+    assert _hub_auth.api_key() is None
+
+
 def test_auth_kind_none(monkeypatch):
     monkeypatch.delenv("SKORE_HUB_API_KEY", raising=False)
     monkeypatch.setattr(_hub_auth, "_auth", _make_login())

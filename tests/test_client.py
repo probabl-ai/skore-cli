@@ -1,4 +1,4 @@
-"""Tests for the thin hub HTTP client backing ``skore agent``."""
+"""Tests for the thin hub HTTP client backing ``skore login``."""
 
 from __future__ import annotations
 
