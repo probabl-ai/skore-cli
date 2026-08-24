@@ -33,7 +33,6 @@ user-wide install and `--agent`/`-a` to target specific agents (`agents`,
 `claude-code`, `cursor`, `codex`, `gemini`).
 
 ```bash
-skore skills find          # browse the catalog interactively
 skore skills list          # list installed skills
 skore skills install       # install skills (interactive or by id)
 skore skills update        # update installed skills
@@ -54,6 +53,34 @@ skore agent
 skore agent --harness claude    # non-interactive harness choice
 skore agent --workspace ./myapp # configure another project directory
 ```
+
+## Agent detection
+
+When `skore` is run inside a coding agent, it detects the agent from
+environment variables and adapts its behavior:
+
+- **`skore`** (no args) shows an agent-specific quick-start with the detected
+  agent's skill directory and harness
+- **`skore skills install`** (no args, non-interactive) prints the catalog and
+  the detected agent's skill directory — no `--agent` flag needed
+- **`skore skills install all`** installs all skills into the detected
+  agent's directory (also works with `--all`)
+- **`skore skills install <ids>`** installs specific skills into the detected
+  agent's directory
+- **`skore agent`** (no `--harness`, non-interactive) auto-selects the
+  detected agent's harness and skips the launch step (the agent is already
+  running)
+
+| Agent | Env Var |
+|-------|---------|
+| Claude Code | `CLAUDECODE` |
+| Cursor | `CURSOR_AGENT` |
+| Gemini CLI | `GEMINI_CLI` |
+| Codex CLI | `CODEX_SANDBOX` |
+| Pi | `PI_CODING_AGENT` |
+| OpenCode | `OPENCODE_CLIENT` |
+
+Any non-empty value triggers detection.
 
 ## License
 
