@@ -1,4 +1,4 @@
-"""The single-select picker backing interactive ``skore agent``."""
+"""Single-select pickers backing ``skore login`` and ``skore agent``."""
 
 from __future__ import annotations
 

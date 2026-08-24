@@ -1,4 +1,4 @@
-"""Textual applications backing the interactive ``skore agent`` commands."""
+"""Textual applications backing the interactive login and agent commands."""
 
 from skore_cli.agent.app._picker import HarnessPicker, WorkspacePicker
 

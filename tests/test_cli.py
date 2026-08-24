@@ -14,7 +14,7 @@ from skore_cli import _plugins, _skore
 def test_cli_exposes_builtin_commands():
     from skore_cli import cli
 
-    assert {"skills", "agent"} <= set(cli.commands)
+    assert {"skills", "login", "agent"} <= set(cli.commands)
 
 
 def test_cli_without_subcommand_shows_plain_help():
@@ -27,6 +27,7 @@ def test_cli_without_subcommand_shows_plain_help():
     assert result.exit_code == 0
     assert "Skore command-line interface." in result.output
     assert "agent" in result.output
+    assert "login" in result.output
     assert "skills" in result.output
     assert "Quick start:" in result.output
 
