@@ -296,20 +296,6 @@ def test_is_non_interactive_without_tty(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# _ensure_login
-# --------------------------------------------------------------------------- #
-
-
-def test_ensure_login_delegates_to_hub_auth(monkeypatch):
-    seen = {}
-    monkeypatch.setattr(
-        _commands, "ensure_login", lambda *, timeout: seen.setdefault("t", timeout)
-    )
-    _commands._ensure_login("http://hub.test", timeout=42)
-    assert seen["t"] == 42
-
-
-# --------------------------------------------------------------------------- #
 # _pick_workspace
 # --------------------------------------------------------------------------- #
 
@@ -475,7 +461,9 @@ def test_login_creates_project_credentials(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
     )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands.hub_auth, "ensure_bearer_token", lambda *, timeout: "tok"
+    )
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: False)
     monkeypatch.setattr(
         _commands._client,
@@ -511,7 +499,9 @@ def test_login_no_memberships_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
     )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands.hub_auth, "ensure_bearer_token", lambda *, timeout: "tok"
+    )
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: False)
     monkeypatch.setattr(_commands._client, "me", lambda hub_url, token: ("user-1", []))
 
@@ -530,13 +520,14 @@ def test_login_refuses_non_interactive_invocation(tmp_path, monkeypatch):
     assert "ask the user to run `skore login`" in _plain_output(result.output)
 
 
-def test_login_with_environment_api_key_directs_to_agent(tmp_path, monkeypatch):
+def test_login_with_environment_api_key_requires_unset(tmp_path, monkeypatch):
     monkeypatch.setenv("SKORE_HUB_API_KEY", "environment-secret")
 
     result = CliRunner().invoke(login, ["--workspace", str(tmp_path)])
 
     assert result.exit_code != 0
-    assert "run `skore agent`" in _plain_output(result.output)
+    assert "unset it to use interactive login" in _plain_output(result.output)
+    assert "skore agent" not in _plain_output(result.output)
 
 
 def test_login_reuses_existing_project_credentials(tmp_path):

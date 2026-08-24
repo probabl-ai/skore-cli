@@ -6,6 +6,7 @@ from pathlib import Path
 
 import rich_click as click
 
+import skore_cli._hub_auth as hub_auth
 from skore_cli._agents import (
     DEFAULT_MODEL_ID,
     HARNESS_NAMES,
@@ -17,8 +18,6 @@ from skore_cli._agents import (
     is_non_interactive,
     launch_harness,
 )
-from skore_cli._hub_auth import API_KEY_ENV, ensure_login
-from skore_cli._hub_auth import api_key as environment_api_key
 from skore_cli._skore import URI_ENV, resolve_hub_uri
 from skore_cli._skore import auth as _auth
 from skore_cli._style import console
@@ -76,11 +75,6 @@ def _resolve_api_key_name(harness: str, existing_names: list[str]) -> str:
     while f"{harness}-{index}" in existing_names:
         index += 1
     return f"{harness}-{index}"
-
-
-def _ensure_login(hub_url: str, *, timeout: int) -> str:
-    """Return a bearer token, running interactive login when needed."""
-    return ensure_login(timeout=timeout)
 
 
 def _create_workspace_api_key(
@@ -185,9 +179,9 @@ def login(
         )
         return
 
-    if environment_api_key():
+    if hub_auth.api_key_from_env():
         raise click.ClickException(
-            f"{API_KEY_ENV} is already set; run `skore agent` to use it."
+            f"{hub_auth.API_KEY_ENV} is set; unset it to use interactive login."
         )
     if is_non_interactive():
         raise click.ClickException(
@@ -196,7 +190,7 @@ def login(
         )
 
     resolved_hub_url = resolve_hub_uri(hub_url, _auth)
-    token = _ensure_login(resolved_hub_url, timeout=login_timeout)
+    token = hub_auth.ensure_bearer_token(timeout=login_timeout)
     user_id, memberships = _client.me(resolved_hub_url, token)
     if not memberships:
         raise click.ClickException(
@@ -278,7 +272,7 @@ def agent(
             )
         harness_name = harness_name or config.harness
     else:
-        api_key = environment_api_key()
+        api_key = hub_auth.api_key_from_env()
         if api_key is None:
             raise click.ClickException(
                 "authentication required; set SKORE_HUB_API_KEY or ask the user "
