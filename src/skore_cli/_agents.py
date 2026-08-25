@@ -13,8 +13,12 @@ from typing import Any
 
 DEFAULT_AGENT = "agents"
 DEFAULT_MODEL_ID = "skore-agent"
+# Name under which Skore registers in each harness config (model provider or
+# MCP server).
+SKORE_PROVIDER_KEY = "skore"
+
+# OpenCode
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
-OPENCODE_PROVIDER_KEY = "skore"
 OPENCODE_SESSION_PLUGIN = ".opencode/plugins/skore-session.js"
 OPENCODE_SESSION_PLUGIN_SOURCE = """\
 export const SkoreSessionPlugin = async () => ({
@@ -25,7 +29,8 @@ export const SkoreSessionPlugin = async () => ({
   },
 });
 """
-CURSOR_SERVER_KEY = "skore"
+
+# Cursor
 # Cursor concatenates the per-user and per-workspace allowlists, so this entry
 # applies on top of whatever the user already allows. A convenience, not a
 # security boundary.
@@ -35,10 +40,15 @@ CURSOR_AUTORUN_INSTRUCTIONS = (
     "template or script into the workspace",
     "calls to the skore MCP server's skore_agent tool",
 )
-BOB_SERVER_KEY = "skore"
-# Bob IDE ships as an application, with no documented command it installs on
-# PATH; a module constant so tests can point it somewhere that does not exist.
+
+# Bob
+# On macOS, Bob IDE ships as an application bundle with no command on PATH.
+# On Windows it installs a ``bob-ide`` command; on Linux the .deb/.rpm package
+# does the same. The macOS bundle path is a module constant so tests can point
+# it somewhere that does not exist.
 BOB_IDE_APP_PATH = Path("/Applications/IBM Bob.app")
+
+# GitHub Copilot
 COPILOT_PROVIDER_NAME = "Skore Agent"
 COPILOT_PROJECT_CONFIG = ".vscode/chatLanguageModels.json"
 COPILOT_BINARIES = ("code", "code-insiders")
@@ -98,9 +108,9 @@ def _configure_opencode(ctx: HarnessContext) -> dict[str, Any]:
     config_path = ctx.workspace / "opencode.json"
     config: dict[str, Any] = {
         "$schema": OPENCODE_SCHEMA,
-        "model": f"{OPENCODE_PROVIDER_KEY}/{ctx.model_id}",
+        "model": f"{SKORE_PROVIDER_KEY}/{ctx.model_id}",
         "provider": {
-            OPENCODE_PROVIDER_KEY: {
+            SKORE_PROVIDER_KEY: {
                 "npm": "@ai-sdk/openai-compatible",
                 "name": "Skore Hub",
                 "options": {
@@ -154,7 +164,7 @@ def _configure_pi(ctx: HarnessContext) -> dict[str, Any]:
     config_path = config_dir / "models.json"
     payload = {
         "providers": {
-            "skore": {
+            SKORE_PROVIDER_KEY: {
                 "baseUrl": ctx.base_url,
                 "api": "openai-completions",
                 "apiKey": ctx.api_key,
@@ -230,7 +240,7 @@ def _configure_cursor(ctx: HarnessContext) -> dict[str, Any]:
     servers = config.get("mcpServers")
     if not isinstance(servers, dict):
         servers = {}
-    servers[CURSOR_SERVER_KEY] = {
+    servers[SKORE_PROVIDER_KEY] = {
         "url": ctx.mcp_url,
         # Written out rather than interpolated from the environment: Cursor
         # resolves ${env:...} against its own process, which is whatever
@@ -263,7 +273,7 @@ def _configure_cursor(ctx: HarnessContext) -> dict[str, Any]:
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
     console.print(f"[skore.ok]+[/] wrote [skore.path]{permissions_path}[/]")
     console.print(
-        f"[skore.muted]  turn [skore.skill]{CURSOR_SERVER_KEY}[/] on under "
+        f"[skore.muted]  turn [skore.skill]{SKORE_PROVIDER_KEY}[/] on under "
         f"Settings -> Tools & MCP; Cursor asks once per change to this file[/]"
     )
     return {"config_path": str(config_path)}
@@ -288,7 +298,7 @@ def _configure_bob(ctx: HarnessContext, transport: dict[str, str]) -> dict[str, 
     servers = config.get("mcpServers")
     if not isinstance(servers, dict):
         servers = {}
-    servers[BOB_SERVER_KEY] = {
+    servers[SKORE_PROVIDER_KEY] = {
         **transport,
         "headers": {"Authorization": f"Bearer {ctx.api_key}"},
         "alwaysAllow": ["skore_agent"],
@@ -316,7 +326,7 @@ def _configure_bob_ide(ctx: HarnessContext) -> dict[str, Any]:
     written = _configure_bob(ctx, {"type": "streamable-http", "url": ctx.mcp_url})
     console.print(
         "[skore.muted]  raise the network timeout for "
-        f"[skore.skill]{BOB_SERVER_KEY}[/] to 5 minutes under Settings -> MCP; a "
+        f"[skore.skill]{SKORE_PROVIDER_KEY}[/] to 5 minutes under Settings -> MCP; a "
         "turn can outlast the 1 minute default[/]"
     )
     return written
@@ -413,7 +423,7 @@ def _upsert_copilot_provider(user_config_path: Path, provider: dict[str, Any]) -
 def _launch_opencode(_workspace: Path, model_id: str) -> None:
     _exec_harness(
         "opencode",
-        ["opencode", "-m", f"{OPENCODE_PROVIDER_KEY}/{model_id}"],
+        ["opencode", "-m", f"{SKORE_PROVIDER_KEY}/{model_id}"],
     )
 
 
@@ -431,7 +441,7 @@ def _launch_pi(workspace: Path, model_id: str) -> None:
     env["PI_CODING_AGENT_DIR"] = str(workspace / ".pi" / "agent")
     _exec_harness(
         "pi",
-        ["pi", "--provider", OPENCODE_PROVIDER_KEY, "--model", model_id],
+        ["pi", "--provider", SKORE_PROVIDER_KEY, "--model", model_id],
         env=env,
     )
 
@@ -445,7 +455,10 @@ def _launch_bob_shell(_workspace: Path, _model_id: str) -> None:
 
 
 def _launch_bob_ide(workspace: Path, _model_id: str) -> None:
-    _exec_harness("open", ["open", "-a", str(BOB_IDE_APP_PATH), str(workspace)])
+    if sys.platform == "darwin":
+        _exec_harness("open", ["open", "-a", str(BOB_IDE_APP_PATH), str(workspace)])
+    else:
+        _exec_harness("bob-ide", ["bob-ide", str(workspace)])
 
 
 def _launch_copilot(workspace: Path, _model_id: str) -> None:
@@ -563,6 +576,7 @@ AGENTS: dict[str, Agent] = {
         label="Bob IDE",
         harness_name="bob-ide",
         harness_label="Bob IDE",
+        harness_binaries=("bob-ide",),
         configure=_configure_bob_ide,
         launch=_launch_bob_ide,
     ),
@@ -654,7 +668,7 @@ def normalize_harness_name(name: str | None) -> str | None:
 
 def is_harness_installed(agent: Agent) -> bool:
     """Return whether ``agent``'s harness executable is on ``PATH``."""
-    if agent.harness_name == "bob-ide":
+    if agent.harness_name == "bob-ide" and sys.platform == "darwin":
         return BOB_IDE_APP_PATH.is_dir()
     binaries = agent.harness_binaries or (
         (agent.harness_name,) if agent.harness_name else ()

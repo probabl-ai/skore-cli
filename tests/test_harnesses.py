@@ -26,8 +26,17 @@ def _ctx(workspace, **kwargs):
 
 @pytest.fixture(autouse=True)
 def no_bob_ide_app(tmp_path, monkeypatch):
-    """Keep detection off the real machine: Bob IDE is found by its bundle."""
+    """Keep detection off the real machine: Bob IDE is found by its bundle on
+    macOS and by the ``bob-ide`` binary on other platforms."""
     monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
+    _real_which = _agents.shutil.which
+
+    def _which(name):
+        if name == "bob-ide":
+            return None
+        return _real_which(name)
+
+    monkeypatch.setattr(_agents.shutil, "which", _which)
 
 
 def test_opencode_installed_by_binary(monkeypatch):
@@ -79,11 +88,23 @@ def test_bob_shell_installed_by_binary(monkeypatch):
 
 
 def test_bob_ide_installed_by_app_bundle(tmp_path, monkeypatch):
-    """The IDE installs no command, so ``_launch_bob_ide`` opens the bundle."""
+    """On macOS the IDE installs no command, so detection uses the bundle."""
     bundle = tmp_path / "IBM Bob.app"
     bundle.mkdir()
     monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", bundle)
     monkeypatch.setattr(_agents.shutil, "which", lambda name: None)
+    assert is_harness_installed(AGENTS["bob-ide"]) is True
+    assert [agent.harness_name for agent in installed_harnesses()] == ["bob-ide"]
+
+
+def test_bob_ide_installed_by_binary_on_non_darwin(tmp_path, monkeypatch):
+    """On non-macOS the IDE installs a ``bob-ide`` command on PATH."""
+    monkeypatch.setattr(_agents.sys, "platform", "linux")
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda name: "/usr/bin/bob-ide" if name == "bob-ide" else None,
+    )
     assert is_harness_installed(AGENTS["bob-ide"]) is True
     assert [agent.harness_name for agent in installed_harnesses()] == ["bob-ide"]
 
@@ -374,6 +395,23 @@ def test_launch_bob_ide_opens_the_app_bundle(tmp_path, monkeypatch):
     monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
     _agents.launch_harness(AGENTS["bob-ide"], tmp_path)
     assert captured["argv"] == ["open", "-a", str(bundle), str(tmp_path)]
+
+
+def test_launch_bob_ide_uses_binary_on_non_darwin(tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    monkeypatch.setattr(_agents.sys, "platform", "linux")
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda name: "/usr/bin/bob-ide" if name == "bob-ide" else None,
+    )
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    _agents.launch_harness(AGENTS["bob-ide"], tmp_path)
+    assert captured["argv"] == ["bob-ide", str(tmp_path)]
 
 
 def test_launch_errors_when_binary_missing(tmp_path, monkeypatch):

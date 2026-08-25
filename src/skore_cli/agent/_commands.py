@@ -191,7 +191,8 @@ def agent(
     project directory.
 
     Supported harnesses: Bob Shell, Bob IDE, Claude, Cursor, OpenCode, Pi and
-    GitHub Copilot (all but Bob IDE must be on ``PATH``).
+    GitHub Copilot (all must be on ``PATH``; on macOS, Bob IDE is found via its
+    application bundle instead).
     """
     workspace = workspace.resolve()
     if not workspace.is_dir():
