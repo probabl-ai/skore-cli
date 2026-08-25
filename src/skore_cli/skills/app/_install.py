@@ -17,9 +17,9 @@ from textual.widgets import (
     TabPane,
 )
 
+from skore_cli._agents import DEFAULT_AGENT, SKILL_AGENT_NAMES
 from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpScreen
-from skore_cli.skills._agents import AGENT_NAMES, DEFAULT_AGENT
 from skore_cli.skills.app._widgets import AutoRadioSet, SkillSelection
 
 _SKILLS_INTRO = (
@@ -117,7 +117,7 @@ class ProbablSkillsInstaller(App[None]):
                     with TabPane("2 · Agents", id="step-agents"):
                         yield Label(_AGENTS_INTRO, classes="step-intro")
                         with AutoRadioSet(id="agents"):
-                            for name in AGENT_NAMES:
+                            for name in SKILL_AGENT_NAMES:
                                 recommended = name == DEFAULT_AGENT
                                 label = (
                                     f"{name}  (recommended — open standard)"
@@ -145,12 +145,12 @@ class ProbablSkillsInstaller(App[None]):
 
     def _selected_agents(self) -> list[str]:
         index = self.query_one("#agents", AutoRadioSet).pressed_index
-        return [AGENT_NAMES[index]] if index >= 0 else []
+        return [SKILL_AGENT_NAMES[index]] if index >= 0 else []
 
     def _ensure_agents_selected(self) -> None:
         radio = self.query_one("#agents", AutoRadioSet)
         if radio.pressed_index < 0:
-            radio.select_index(AGENT_NAMES.index(DEFAULT_AGENT))
+            radio.select_index(SKILL_AGENT_NAMES.index(DEFAULT_AGENT))
 
     def _ensure_scope_selected(self) -> None:
         radio = self.query_one("#scope", AutoRadioSet)
@@ -167,7 +167,7 @@ class ProbablSkillsInstaller(App[None]):
         active = self.query_one("#wizard", TabbedContent).active
         if active == "step-agents":
             radio = self.query_one("#agents", AutoRadioSet)
-            radio.select_index(AGENT_NAMES.index(DEFAULT_AGENT))
+            radio.select_index(SKILL_AGENT_NAMES.index(DEFAULT_AGENT))
         elif active == "step-scope":
             radio = self.query_one("#scope", AutoRadioSet)
             radio.select_index(1 if self._default_global else 0)
