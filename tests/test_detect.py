@@ -118,7 +118,7 @@ def test_priority_pi_before_opencode(monkeypatch):
         ("CLAUDECODE", "1", "claude"),
         ("CURSOR_AGENT", "1", None),
         ("GEMINI_CLI", "1", None),
-        ("CODEX_SANDBOX", "seatbelt", None),
+        ("CODEX_SANDBOX", "seatbelt", "codex"),
         ("PI_CODING_AGENT", "true", "pi"),
         ("OPENCODE_CLIENT", "1", "opencode"),
     ],

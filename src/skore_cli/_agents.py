@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import sys
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,10 @@ export const SkoreSessionPlugin = async () => ({
 COPILOT_PROVIDER_NAME = "Skore Agent"
 COPILOT_PROJECT_CONFIG = ".vscode/chatLanguageModels.json"
 COPILOT_BINARIES = ("code", "code-insiders")
+CODEX_PROVIDER_KEY = "skore"
+CODEX_PROVIDER_NAME = "Skore Agent"
+CODEX_PROJECT_CONFIG = ".codex/skore-provider.toml"
+CODEX_API_KEY_ENV = "SKORE_AGENT_API_KEY"
 
 
 @dataclass(frozen=True)
@@ -184,13 +189,12 @@ def _copilot_provider(ctx: HarnessContext) -> dict[str, Any]:
 
 
 def _configure_copilot(ctx: HarnessContext) -> dict[str, Any]:
-    """Write the project configuration for GitHub Copilot in VS Code."""
+    """Write ``.vscode/chatLanguageModels.json`` for GitHub Copilot in VS Code."""
     from skore_cli._style import console
     from skore_cli.agent._skore_file import ensure_gitignore_entry
 
     config_path = ctx.workspace / COPILOT_PROJECT_CONFIG
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps([_copilot_provider(ctx)], indent=2) + "\n")
+    _upsert_copilot_provider(config_path, _copilot_provider(ctx))
     ensure_gitignore_entry(ctx.workspace, COPILOT_PROJECT_CONFIG)
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
     return {"config_path": str(config_path)}
@@ -228,25 +232,86 @@ def _copilot_user_config_path(binary: str, *, home: Path | None = None) -> Path:
     return home / ".config" / app / "User" / "chatLanguageModels.json"
 
 
-def _upsert_copilot_provider(user_config_path: Path, provider: dict[str, Any]) -> None:
-    """Upsert the Skore provider into a user-level language-model file."""
+def _upsert_copilot_provider(config_path: Path, provider: dict[str, Any]) -> None:
+    """Upsert the Skore provider into a language-model file."""
     providers: list[Any] = []
-    if user_config_path.is_file():
+    if config_path.is_file():
         try:
-            providers = json.loads(user_config_path.read_text() or "[]")
+            parsed = json.loads(config_path.read_text() or "[]")
         except json.JSONDecodeError as error:
             raise RuntimeError(
-                f"could not parse {user_config_path}; "
-                "add the Skore Agent provider from VS Code instead."
+                f"could not parse {config_path}; "
+                "fix the file or add the Skore Agent provider manually."
             ) from error
+        if not isinstance(parsed, list):
+            raise RuntimeError(
+                f"could not parse {config_path}; "
+                "fix the file or add the Skore Agent provider manually."
+            )
+        providers = parsed
     updated = [
         entry
         for entry in providers
         if not (isinstance(entry, dict) and entry.get("name") == COPILOT_PROVIDER_NAME)
     ]
     updated.append(provider)
-    user_config_path.parent.mkdir(parents=True, exist_ok=True)
-    user_config_path.write_text(json.dumps(updated, indent=2) + "\n")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(updated, indent=2) + "\n")
+
+
+def _toml_string(value: str) -> str:
+    """Quote ``value`` as a TOML basic string.
+
+    JSON string escapes are a valid subset of TOML basic-string escapes, so
+    values containing quotes or backslashes stay parseable.
+    """
+    return json.dumps(value)
+
+
+def _codex_config_overrides(base_url: str) -> list[str]:
+    """Build the runtime ``--config`` overrides that declare the provider.
+
+    Codex refuses ``model_providers`` in project-local config files, so the
+    provider is passed per run instead. The API key is referenced through
+    ``env_http_headers`` (header name -> environment variable): it travels in
+    the process environment and never appears on the command line.
+    """
+    provider = f"model_providers.{CODEX_PROVIDER_KEY}"
+    return [
+        f"model_provider={_toml_string(CODEX_PROVIDER_KEY)}",
+        f"{provider}.name={_toml_string(CODEX_PROVIDER_NAME)}",
+        f"{provider}.base_url={_toml_string(base_url)}",
+        f'{provider}.wire_api="responses"',
+        f'{provider}.env_http_headers={{ "X-API-Key" = "{CODEX_API_KEY_ENV}" }}',
+    ]
+
+
+def _configure_codex(ctx: HarnessContext) -> dict[str, Any]:
+    """Write the project-local Codex provider file.
+
+    Everything lives in the workspace so each worktree keeps its own hub
+    credentials; nothing is written under ``~/.codex`` and plain ``codex``
+    runs keep the user's default model.
+    """
+    from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
+
+    config_path = ctx.workspace / CODEX_PROJECT_CONFIG
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        f"model = {_toml_string(ctx.model_id)}\n"
+        f"model_provider = {_toml_string(CODEX_PROVIDER_KEY)}\n"
+        f"base_url = {_toml_string(ctx.base_url)}\n"
+        f"api_key = {_toml_string(ctx.api_key)}\n"
+    )
+    ensure_gitignore_entry(ctx.workspace, CODEX_PROJECT_CONFIG)
+    console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
+    console.print(
+        "[skore.muted]Note:[/] configuration is project-local and "
+        "[skore.path]~/.codex[/] [skore.muted]is untouched. Launch through[/] "
+        "[skore.skill]skore agent[/] [skore.muted]to use the Skore hub model.[/]"
+    )
+    return {"config_path": str(config_path)}
 
 
 def _launch_opencode(_workspace: Path, model_id: str) -> None:
@@ -282,7 +347,31 @@ def _launch_copilot(workspace: Path, _model_id: str) -> None:
     if binary is None:
         raise RuntimeError("GitHub Copilot is not installed or not on PATH.")
 
-    provider = json.loads((workspace / COPILOT_PROJECT_CONFIG).read_text())[0]
+    # VS Code only reads providers from the user profile, so the project config
+    # written by ``_configure_copilot`` has to be mirrored there.
+    project_config = workspace / COPILOT_PROJECT_CONFIG
+    if not project_config.is_file():
+        raise RuntimeError(
+            f"missing {COPILOT_PROJECT_CONFIG}; "
+            "run skore agent --harness copilot first."
+        )
+    try:
+        providers = json.loads(project_config.read_text() or "[]")
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"could not parse {COPILOT_PROJECT_CONFIG}.") from error
+    provider = next(
+        (
+            entry
+            for entry in providers
+            if isinstance(entry, dict) and entry.get("name") == COPILOT_PROVIDER_NAME
+        ),
+        None,
+    )
+    if provider is None:
+        raise RuntimeError(
+            f"{COPILOT_PROJECT_CONFIG} has no {COPILOT_PROVIDER_NAME} provider; "
+            "run skore agent --harness copilot first."
+        )
     user_config = _copilot_user_config_path(binary)
     _upsert_copilot_provider(user_config, provider)
     console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
@@ -291,6 +380,36 @@ def _launch_copilot(workspace: Path, _model_id: str) -> None:
         "[skore.muted]in Copilot Chat (reload VS Code if it is missing).[/]"
     )
     _exec_harness(binary, [binary, str(workspace)])
+
+
+def _launch_codex(workspace: Path, model_id: str) -> None:
+    project_config = workspace / CODEX_PROJECT_CONFIG
+    if not project_config.is_file():
+        raise RuntimeError(
+            f"missing {CODEX_PROJECT_CONFIG}; run skore agent --harness codex first."
+        )
+    try:
+        data = tomllib.loads(project_config.read_text())
+    except tomllib.TOMLDecodeError as error:
+        raise RuntimeError(
+            f"could not parse {CODEX_PROJECT_CONFIG}; "
+            "run skore agent --harness codex first."
+        ) from error
+    base_url = data.get("base_url")
+    api_key = data.get("api_key")
+    if not isinstance(base_url, str) or not base_url:
+        raise RuntimeError(f"{CODEX_PROJECT_CONFIG} is missing a valid base_url.")
+    if not isinstance(api_key, str) or not api_key:
+        raise RuntimeError(f"{CODEX_PROJECT_CONFIG} is missing a valid api_key.")
+    model = data.get("model")
+    if not isinstance(model, str) or not model:
+        model = model_id
+    env = os.environ.copy()
+    env[CODEX_API_KEY_ENV] = api_key
+    argv = ["codex", "--model", model]
+    for override in _codex_config_overrides(base_url):
+        argv.extend(["--config", override])
+    _exec_harness("codex", argv, env=env)
 
 
 def _exec_harness(
@@ -336,6 +455,10 @@ AGENTS: dict[str, Agent] = {
         detection_priority=3,
         user_skills_dir=".agents/skills",
         project_skills_dir=".agents/skills",
+        harness_name="codex",
+        harness_label="Codex",
+        configure=_configure_codex,
+        launch=_launch_codex,
     ),
     "gemini": Agent(
         name="gemini",
