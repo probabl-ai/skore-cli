@@ -91,6 +91,7 @@ def test_bob_shell_installed_by_binary(monkeypatch):
 
 def test_bob_ide_installed_by_app_bundle(tmp_path, monkeypatch):
     """On macOS the IDE installs no command, so detection uses the bundle."""
+    monkeypatch.setattr(_agents.sys, "platform", "darwin")
     bundle = tmp_path / "IBM Bob.app"
     bundle.mkdir()
     monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", bundle)
@@ -386,6 +387,7 @@ def test_launch_bob_shell_takes_the_workspace_from_the_cwd(tmp_path, monkeypatch
 
 
 def test_launch_bob_ide_opens_the_app_bundle(tmp_path, monkeypatch):
+    monkeypatch.setattr(_agents.sys, "platform", "darwin")
     captured: dict[str, object] = {}
 
     def fake_exec(name, argv, *, env=None):
