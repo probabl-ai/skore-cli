@@ -28,6 +28,7 @@ Supported harnesses:
   • OpenCode     — writes opencode.json
   • Pi           — writes .pi/agent/models.json
   • Copilot      — writes .vscode/chatLanguageModels.json
+  • Codex        — writes .codex/skore-provider.toml (+ ~/.codex/config.toml)
 
 Skore stores your hub credentials in .skore and selects the
 skore-agent model when the harness starts.

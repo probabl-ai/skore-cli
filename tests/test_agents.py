@@ -39,6 +39,7 @@ def test_agent_names_match_registry():
 def test_harness_names_come_from_registry():
     assert HARNESS_NAMES == [
         "claude",
+        "codex",
         "cursor",
         "opencode",
         "pi",

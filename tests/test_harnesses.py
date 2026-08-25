@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import tomllib
+from typing import Any
 
 import pytest
 
@@ -546,6 +548,23 @@ def test_copilot_config_matches_custom_endpoint(tmp_path):
     assert ".vscode/chatLanguageModels.json" in gitignore
 
 
+def test_configure_copilot_preserves_other_entries(tmp_path):
+    config_path = tmp_path / ".vscode" / "chatLanguageModels.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(
+            [{"name": "My Other Endpoint", "vendor": "customendpoint", "models": []}]
+        )
+        + "\n"
+    )
+    AGENTS["github-copilot"].configure(_ctx(tmp_path))
+    providers = json.loads(config_path.read_text())
+    assert [entry["name"] for entry in providers] == [
+        "My Other Endpoint",
+        "Skore Agent",
+    ]
+
+
 def test_launch_copilot_prefers_code_and_opens_workspace(tmp_path, monkeypatch):
     AGENTS["github-copilot"].configure(_ctx(tmp_path))
     user_root = tmp_path / "vscode-user"
@@ -606,6 +625,77 @@ def test_launch_copilot_errors_when_binary_missing(tmp_path, monkeypatch):
         _agents._launch_copilot(tmp_path, "skore-agent")
 
 
+def test_launch_copilot_errors_when_project_config_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda cmd: "/usr/bin/code" if cmd == "code" else None,
+    )
+    with pytest.raises(RuntimeError, match="missing .vscode/chatLanguageModels.json"):
+        _agents._launch_copilot(tmp_path, "skore-agent")
+
+
+def test_launch_copilot_errors_when_project_config_unparsable(tmp_path, monkeypatch):
+    config_path = tmp_path / ".vscode" / "chatLanguageModels.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text("{not json\n")
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda cmd: "/usr/bin/code" if cmd == "code" else None,
+    )
+    with pytest.raises(RuntimeError, match="could not parse"):
+        _agents._launch_copilot(tmp_path, "skore-agent")
+
+
+def test_launch_copilot_finds_provider_among_others(tmp_path, monkeypatch):
+    config_path = tmp_path / ".vscode" / "chatLanguageModels.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(
+            [
+                {"name": "My Other Endpoint", "vendor": "customendpoint", "models": []},
+                {
+                    "name": "Skore Agent",
+                    "vendor": "customendpoint",
+                    "apiKey": "skore",
+                    "models": [
+                        {
+                            "id": "skore-agent",
+                            "requestHeaders": {"X-API-Key": "secret-key"},
+                        }
+                    ],
+                },
+            ]
+        )
+        + "\n"
+    )
+    user_root = tmp_path / "vscode-user"
+    captured: dict[str, list[str]] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda cmd: "/usr/bin/code" if cmd == "code" else None,
+    )
+    monkeypatch.setattr(
+        _agents,
+        "_copilot_user_config_path",
+        lambda binary, home=None: user_root / binary / "chatLanguageModels.json",
+    )
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+
+    _agents.launch_harness(AGENTS["github-copilot"], tmp_path, model_id="skore-agent")
+    assert captured["argv"] == ["code", str(tmp_path)]
+    user_config = user_root / "code" / "chatLanguageModels.json"
+    providers = json.loads(user_config.read_text())
+    assert providers[-1]["name"] == "Skore Agent"
+    assert providers[-1]["models"][0]["requestHeaders"] == {"X-API-Key": "secret-key"}
+
+
 def test_upsert_copilot_provider_preserves_other_entries(tmp_path):
     user_config = tmp_path / "User" / "chatLanguageModels.json"
     user_config.parent.mkdir(parents=True)
@@ -645,6 +735,14 @@ def test_upsert_copilot_provider_errors_on_unparsable_file(tmp_path):
         _agents._upsert_copilot_provider(user_config, {"name": "Skore Agent"})
 
 
+def test_upsert_copilot_provider_errors_on_non_list_file(tmp_path):
+    user_config = tmp_path / "User" / "chatLanguageModels.json"
+    user_config.parent.mkdir(parents=True)
+    user_config.write_text('{"name": "not a list"}\n')
+    with pytest.raises(RuntimeError, match="could not parse"):
+        _agents._upsert_copilot_provider(user_config, {"name": "Skore Agent"})
+
+
 @pytest.mark.parametrize(
     ("platform", "expected"),
     [
@@ -673,3 +771,185 @@ def test_copilot_user_config_path_windows_uses_appdata(tmp_path, monkeypatch):
     assert fallback == tmp_path.joinpath(
         "AppData", "Roaming", "Code", "User", "chatLanguageModels.json"
     )
+
+
+def test_detect_codex_by_binary(monkeypatch):
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda name: "/usr/bin/codex" if name == "codex" else None,
+    )
+    assert is_harness_installed(AGENTS["codex"]) is True
+    assert [agent.harness_name for agent in installed_harnesses()] == ["codex"]
+
+
+def _codex_home(tmp_path, monkeypatch):
+    """Point ``Path.home`` at a scratch dir to detect any global write."""
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    home = tmp_path / "home"
+    monkeypatch.setattr(_agents.Path, "home", classmethod(lambda cls: home))
+    return home
+
+
+def _prepare_codex_launch(tmp_path, monkeypatch) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+        captured["env"] = env
+
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda cmd: "/usr/bin/codex" if cmd == "codex" else None,
+    )
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    return captured
+
+
+def _parse_config_overrides(argv: list[str]) -> dict[str, object]:
+    """Parse the ``--config key=value`` tail of a codex argv as one TOML doc."""
+    overrides = argv[4::2]
+    assert argv[3::2] == ["--config"] * len(overrides)
+    return tomllib.loads("\n".join(overrides))
+
+
+def test_configure_codex_writes_project_config_only(tmp_path, monkeypatch):
+    home = _codex_home(tmp_path, monkeypatch)
+
+    AGENTS["codex"].configure(_ctx(tmp_path))
+
+    project = tomllib.loads((tmp_path / ".codex" / "skore-provider.toml").read_text())
+    assert project["model"] == "skore-agent"
+    assert project["model_provider"] == "skore"
+    assert project["base_url"] == "http://hub.test/v1"
+    assert project["api_key"] == "secret-key"
+    gitignore = (tmp_path / ".gitignore").read_text().splitlines()
+    assert ".codex/skore-provider.toml" in gitignore
+    assert not home.exists()
+
+
+def test_configure_codex_overwrites_previous_project_config(tmp_path):
+    stale = HarnessContext(
+        workspace=tmp_path, hub_url="http://old.test", api_key="old-key"
+    )
+    AGENTS["codex"].configure(stale)
+    AGENTS["codex"].configure(_ctx(tmp_path))
+    project = tomllib.loads((tmp_path / ".codex" / "skore-provider.toml").read_text())
+    assert project["base_url"] == "http://hub.test/v1"
+    assert project["api_key"] == "secret-key"
+
+
+def test_configure_codex_escapes_toml_special_characters(tmp_path):
+    api_key = 'sec"ret\\key'
+    ctx = HarnessContext(workspace=tmp_path, hub_url="http://hub.test", api_key=api_key)
+
+    AGENTS["codex"].configure(ctx)
+
+    project = tomllib.loads((tmp_path / ".codex" / "skore-provider.toml").read_text())
+    assert project["api_key"] == api_key
+
+
+def test_launch_codex_passes_provider_as_runtime_overrides(tmp_path, monkeypatch):
+    home = _codex_home(tmp_path, monkeypatch)
+    captured = _prepare_codex_launch(tmp_path, monkeypatch)
+    AGENTS["codex"].configure(_ctx(tmp_path))
+
+    _agents.launch_harness(AGENTS["codex"], tmp_path, model_id="skore-agent")
+
+    argv = captured["argv"]
+    assert argv[:3] == ["codex", "--model", "skore-agent"]
+    data = _parse_config_overrides(argv)
+    assert data["model_provider"] == "skore"
+    provider = data["model_providers"]["skore"]
+    assert provider["name"] == "Skore Agent"
+    assert provider["base_url"] == "http://hub.test/v1"
+    assert provider["wire_api"] == "responses"
+    assert provider["env_http_headers"] == {"X-API-Key": "SKORE_AGENT_API_KEY"}
+    assert "http_headers" not in provider
+    assert "env_key" not in provider
+    assert "secret-key" not in argv  # the key never rides the command line
+    assert captured["env"]["SKORE_AGENT_API_KEY"] == "secret-key"
+    assert not home.exists()
+
+
+def test_launch_codex_prefers_project_model(tmp_path, monkeypatch):
+    captured = _prepare_codex_launch(tmp_path, monkeypatch)
+    config = tmp_path / ".codex" / "skore-provider.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        'model = "custom-model"\n'
+        'model_provider = "skore"\n'
+        'base_url = "http://hub.test/v1"\n'
+        'api_key = "secret-key"\n'
+    )
+
+    _agents.launch_harness(AGENTS["codex"], tmp_path, model_id="skore-agent")
+
+    assert captured["argv"][:3] == ["codex", "--model", "custom-model"]
+
+
+def test_launch_codex_falls_back_to_model_argument(tmp_path, monkeypatch):
+    captured = _prepare_codex_launch(tmp_path, monkeypatch)
+    config = tmp_path / ".codex" / "skore-provider.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('base_url = "http://hub.test/v1"\napi_key = "secret-key"\n')
+
+    _agents.launch_harness(AGENTS["codex"], tmp_path, model_id="fallback-model")
+
+    assert captured["argv"][:3] == ["codex", "--model", "fallback-model"]
+
+
+def test_launch_codex_errors_when_project_config_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda cmd: "/usr/bin/codex" if cmd == "codex" else None,
+    )
+    with pytest.raises(RuntimeError, match="missing .codex/skore-provider.toml"):
+        _agents.launch_harness(AGENTS["codex"], tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        (
+            'model = "skore-agent"\nmodel_provider = "skore"\napi_key = "secret-key"\n',
+            "missing a valid base_url",
+        ),
+        (
+            'model = "skore-agent"\n'
+            'model_provider = "skore"\n'
+            'base_url = ""\n'
+            'api_key = "secret-key"\n',
+            "missing a valid base_url",
+        ),
+        (
+            'model = "skore-agent"\n'
+            'model_provider = "skore"\n'
+            'base_url = "http://hub.test/v1"\n',
+            "missing a valid api_key",
+        ),
+        (
+            'model = "skore-agent"\n'
+            'model_provider = "skore"\n'
+            'base_url = "http://hub.test/v1"\n'
+            'api_key = ""\n',
+            "missing a valid api_key",
+        ),
+        ("model = [unterminated\n", "could not parse"),
+    ],
+)
+def test_launch_codex_errors_when_project_config_invalid(
+    tmp_path, monkeypatch, payload, match
+):
+    config = tmp_path / ".codex" / "skore-provider.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(payload)
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda cmd: "/usr/bin/codex" if cmd == "codex" else None,
+    )
+    with pytest.raises(RuntimeError, match=match):
+        _agents.launch_harness(AGENTS["codex"], tmp_path)
