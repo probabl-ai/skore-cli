@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,12 +14,18 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.tree import Tree
 
+from skore_cli._agents import (
+    DEFAULT_AGENT,
+    SKILL_AGENT_NAMES,
+    detect_agent,
+    is_non_interactive,
+    resolve_skill_agent,
+    resolve_targets,
+)
 from skore_cli._style import console
-from skore_cli.skills._agents import AGENT_NAMES, DEFAULT_AGENT, resolve_targets
 from skore_cli.skills._catalog import GITHUB_REPO, fetch_release
 from skore_cli.skills.app import (
     InstalledSkillsPicker,
-    ProbablSkillsFinder,
     ProbablSkillsInstaller,
 )
 
@@ -29,7 +34,7 @@ SIDECAR = ".skore-skill.json"
 click.rich_click.COMMAND_GROUPS = {
     **getattr(click.rich_click, "COMMAND_GROUPS", {}),
     "cli skills": [
-        {"name": "Discover", "commands": ["find", "list"]},
+        {"name": "Discover", "commands": ["list"]},
         {"name": "Manage", "commands": ["install", "update", "remove"]},
     ],
 }
@@ -40,7 +45,7 @@ def _agent_option(func):
         "--agent",
         "-a",
         multiple=True,
-        type=click.Choice(AGENT_NAMES),
+        type=click.Choice(SKILL_AGENT_NAMES),
         help="Target agent(s). Defaults to the .agents/ cross-client directory.",
     )(func)
 
@@ -60,7 +65,7 @@ def _manage_agent_option(func):
         "--agent",
         "-a",
         multiple=True,
-        type=click.Choice(AGENT_NAMES),
+        type=click.Choice(SKILL_AGENT_NAMES),
         help="Restrict to specific agent(s). Defaults to all known agents.",
     )(func)
 
@@ -71,7 +76,7 @@ def _manage_targets(agent: tuple[str, ...], *, global_: bool) -> list[tuple[str,
     With no explicit ``--agent`` every known agent is scanned so that skills
     installed into any client directory remain discoverable and manageable.
     """
-    agent_names = list(agent) if agent else AGENT_NAMES
+    agent_names = list(agent) if agent else SKILL_AGENT_NAMES
     return resolve_targets(agent_names, global_=global_)
 
 
@@ -184,10 +189,6 @@ def _matches(entry: dict, query: str) -> bool:
     return any(field and query in field.lower() for field in fields)
 
 
-def _is_interactive() -> bool:
-    return sys.stdin.isatty() and sys.stdout.isatty()
-
-
 def _render_catalog(
     catalog: dict[str, Any],
     *,
@@ -206,9 +207,13 @@ def _render_catalog(
         workflows = [entry for entry in workflows if _matches(entry, needle)]
         skills = [entry for entry in skills if _matches(entry, needle)]
 
+    if is_non_interactive():
+        _render_catalog_plain(workflows, skills)
+        return
+
     if workflows:
         table = Table(title="Workflows (recommended)")
-        table.add_column("id", style="cyan")
+        table.add_column("id", style="skore.skill")
         table.add_column("summary")
         for workflow in workflows:
             table.add_row(workflow["id"], workflow.get("summary", ""))
@@ -216,7 +221,7 @@ def _render_catalog(
 
     if skills:
         table = Table(title="Skills")
-        table.add_column("id", style="cyan")
+        table.add_column("id", style="skore.skill")
         table.add_column("summary")
         for skill in skills:
             table.add_row(skill["id"], skill.get("summary", ""))
@@ -226,8 +231,35 @@ def _render_catalog(
         console.print("No skill or workflow matches the query.")
 
 
+def _render_catalog_plain(
+    workflows: list[dict[str, Any]], skills: list[dict[str, Any]]
+) -> None:
+    """Render the catalog as plain text (no boxes) for non-interactive use."""
+    if workflows:
+        console.print("Workflows:")
+        for wf in workflows:
+            summary = wf.get("summary", "")
+            console.print(f"  {wf['id']:<26} {summary}")
+
+    if skills:
+        if workflows:
+            console.print("")
+        console.print("Skills:")
+        for skill in skills:
+            summary = skill.get("summary", "")
+            console.print(f"  {skill['id']:<26} {summary}")
+
+    if not workflows and not skills:
+        console.print("No skill or workflow matches the query.")
+
+
 def _resolve_agent_names(agent: tuple[str, ...]) -> list[str]:
-    return list(agent) if agent else [DEFAULT_AGENT]
+    if agent:
+        return list(agent)
+    detected = detect_agent()
+    if detected:
+        return [resolve_skill_agent(detected).name]
+    return [DEFAULT_AGENT]
 
 
 def _interactive_install_options(
@@ -270,17 +302,6 @@ def _interactive_install_options(
     return selected, agent_names, global_
 
 
-def _interactive_find(catalog: dict[str, Any]) -> None:
-    """Pick catalog entries with the Textual finder and render their details."""
-    app = ProbablSkillsFinder(catalog)
-    app.run()
-
-    if not app.result:
-        return
-
-    _render_catalog(catalog, ids=app.result)
-
-
 @click.group(invoke_without_command=True)
 @click.pass_context
 def skills(ctx) -> None:
@@ -308,10 +329,17 @@ def install(ids, agent, global_, all_) -> None:
     Pass skill or workflow ids (or ``--all``) to install non-interactively,
     optionally with ``--agent`` and ``--global`` to choose the targets and
     scope. ``--agent``/``--global`` require an explicit selection.
+
+    ``all`` can be passed as a positional argument instead of ``--all``:
+    ``skore skills install all``.
     """
     with _release() as (tag, root, catalog):
         skills_by_id, workflows_by_id = _index(catalog)
         ids = list(ids)
+
+        if "all" in ids:
+            all_ = True
+            ids = [i for i in ids if i != "all"]
 
         if ids or all_ or agent or global_:
             if not (ids or all_):
@@ -325,6 +353,14 @@ def install(ids, agent, global_, all_) -> None:
             )
             agent_names = _resolve_agent_names(agent)
         else:
+            if is_non_interactive():
+                _render_catalog(catalog)
+                console.print(
+                    "Run [skore.cmd]skore skills install <ids>[/] to install "
+                    "specific skills, or [skore.cmd]skore skills install all[/] "
+                    "to install everything."
+                )
+                return
             options = _interactive_install_options(
                 catalog, agent=agent, default_global=global_
             )
@@ -391,34 +427,6 @@ def list_skills(agent, global_) -> None:
         console.print("No skills installed.")
 
 
-@skills.command("find")
-@click.argument("query", required=False)
-@click.option(
-    "--all",
-    "all_",
-    is_flag=True,
-    help="List every skill and workflow without the interactive picker.",
-)
-def find(query, all_) -> None:
-    """Search available skills and workflows in the latest release.
-
-    Without a query in an interactive terminal, an interactive picker is
-    launched and the chosen entries are rendered; otherwise the matching
-    catalog entries are listed. Pass ``--all`` to list the whole catalog
-    without launching the interactive picker.
-    """
-    with _release() as (_, _, catalog):
-        if all_:
-            _render_catalog(catalog)
-            return
-
-        if query is None and _is_interactive():
-            _interactive_find(catalog)
-            return
-
-        _render_catalog(catalog, query=query)
-
-
 @skills.command("update")
 @click.argument("ids", nargs=-1)
 @_manage_agent_option
@@ -429,12 +437,12 @@ def update(ids, agent, global_, all_) -> None:
 
     Pass skill ids to update, or ``--all`` to update every installed skill.
     Scans every known agent by default; pass ``--agent`` to restrict the scan.
-    Run ``skore skills find`` to discover ids.
+    Run ``skore skills list`` to see installed ids.
     """
     targets = _manage_targets(agent, global_=global_)
 
     if not all_ and not ids:
-        if _is_interactive():
+        if not is_non_interactive():
             selected = _interactive_manage_picker(
                 _installed_skill_ids(targets),
                 title="Select skills to update.",
@@ -446,7 +454,7 @@ def update(ids, agent, global_, all_) -> None:
         else:
             raise click.UsageError(
                 "Specify skill ids to update or pass --all. "
-                "Run `skore skills find` to discover ids."
+                "Run `skore skills list` to discover ids."
             )
 
     requested = set(ids)
@@ -487,12 +495,12 @@ def remove(ids, agent, global_, all_, yes) -> None:
 
     Pass skill ids to remove, or ``--all`` to remove every installed skill.
     Scans every known agent by default; pass ``--agent`` to restrict the scan.
-    Run ``skore skills find`` to discover ids.
+    Run ``skore skills list`` to see installed ids.
     """
     targets = _manage_targets(agent, global_=global_)
 
     if not all_ and not ids:
-        if _is_interactive():
+        if not is_non_interactive():
             selected = _interactive_manage_picker(
                 _installed_skill_ids(targets),
                 title="Select skills to remove.",
@@ -504,7 +512,7 @@ def remove(ids, agent, global_, all_, yes) -> None:
         else:
             raise click.UsageError(
                 "Specify skill ids to remove or pass --all. "
-                "Run `skore skills find` to discover ids."
+                "Run `skore skills list` to discover ids."
             )
 
     to_remove = []

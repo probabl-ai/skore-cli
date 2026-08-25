@@ -2,24 +2,26 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import rich_click as click
 
+from skore_cli._agents import (
+    DEFAULT_MODEL_ID,
+    HARNESS_NAMES,
+    HarnessContext,
+    detect_agent,
+    get_harness,
+    installed_harnesses,
+    is_harness_installed,
+    is_non_interactive,
+    launch_harness,
+)
 from skore_cli._hub_auth import ensure_login
 from skore_cli._skore import URI_ENV, resolve_hub_uri
 from skore_cli._skore import auth as _auth
 from skore_cli._style import console
 from skore_cli.agent import _client
-from skore_cli.agent._harnesses import (
-    DEFAULT_MODEL_ID,
-    HARNESS_NAMES,
-    HARNESSES,
-    HarnessContext,
-    detect_harnesses,
-    launch_harness,
-)
 from skore_cli.agent._skore_file import SkoreConfig, ensure_gitignore_entry
 
 PROJECT_PERMISSIONS = (
@@ -28,10 +30,6 @@ PROJECT_PERMISSIONS = (
     "update:project",
     "delete:project",
 )
-
-
-def _is_interactive() -> bool:
-    return sys.stdin.isatty() and sys.stdout.isatty()
 
 
 def _pick_workspace(
@@ -52,14 +50,16 @@ def _pick_harness(workspace: Path) -> str:
     """Launch the Textual harness picker among installed harnesses."""
     from skore_cli.agent.app import HarnessPicker
 
-    detected = detect_harnesses(workspace)
-    if not detected:
+    installed = installed_harnesses()
+    if not installed:
         raise click.ClickException(
             "no supported harness found on PATH. Install one of: "
             f"{', '.join(HARNESS_NAMES)}."
         )
     rows = [
-        (name, HARNESSES[name].label, True) for name in HARNESSES if name in detected
+        (harness.harness_name, harness.harness_display_name, True)
+        for harness in installed
+        if harness.harness_name is not None
     ]
     app = HarnessPicker(rows, preselect=0)
     app.run()
@@ -123,7 +123,7 @@ def _resolve_membership(
     if workspace_public_id is None:
         if len(memberships) == 1:
             return memberships[0]
-        if not _is_interactive():
+        if is_non_interactive():
             raise click.UsageError(
                 "pass a saved workspace in .skore or run interactively to pick one."
             )
@@ -218,11 +218,20 @@ def agent(
 
         if config is None or not config.api_key:
             if harness_name is None:
-                if not _is_interactive():
-                    raise click.UsageError(
-                        "pass --harness to create an API key non-interactively."
-                    )
-                harness_name = _pick_harness(workspace)
+                if is_non_interactive():
+                    detected = detect_agent()
+                    if (
+                        detected
+                        and detected.harness_name
+                        and is_harness_installed(detected)
+                    ):
+                        harness_name = detected.harness_name
+                    else:
+                        raise click.UsageError(
+                            "pass --harness to create an API key non-interactively."
+                        )
+                else:
+                    harness_name = _pick_harness(workspace)
             api_key = _create_workspace_api_key(
                 resolved_hub_url, token, user_id, membership, harness_name
             )
@@ -241,15 +250,22 @@ def agent(
         console.print(f"[skore.ok]+[/] saved [skore.path]{config_path}[/]")
 
     if harness_name is None:
-        if not _is_interactive():
-            raise click.UsageError(
-                f"pass --harness <name> (one of: {', '.join(HARNESS_NAMES)})."
-            )
-        harness_name = _pick_harness(workspace)
+        if is_non_interactive():
+            detected = detect_agent()
+            if detected and detected.harness_name and is_harness_installed(detected):
+                harness_name = detected.harness_name
+            else:
+                raise click.UsageError(
+                    f"pass --harness <name> (one of: {', '.join(HARNESS_NAMES)})."
+                )
+        else:
+            harness_name = _pick_harness(workspace)
 
-    harness = HARNESSES[harness_name]
-    if not harness.detect(workspace):
-        raise click.ClickException(f"{harness.label} is not installed or not on PATH.")
+    harness = get_harness(harness_name)
+    if not is_harness_installed(harness):
+        raise click.ClickException(
+            f"{harness.harness_display_name} is not installed or not on PATH."
+        )
 
     if config.harness != harness_name:
         config = SkoreConfig(
@@ -262,8 +278,10 @@ def agent(
         config.save(workspace)
 
     console.print(
-        f"Configuring [skore.skill]{harness.label}[/] in [skore.path]{workspace}[/]"
+        f"Configuring [skore.skill]{harness.harness_display_name}[/] in "
+        f"[skore.path]{workspace}[/]"
     )
+    assert harness.configure is not None
     harness.configure(
         HarnessContext(
             workspace=workspace,
@@ -272,4 +290,13 @@ def agent(
             model_id=model_id,
         )
     )
-    launch_harness(harness_name, workspace, model_id=model_id)
+    detected = detect_agent()
+    if detected and detected.harness_name == harness_name:
+        console.print(
+            f"[skore.ok]+[/] {harness.harness_display_name} configured with the "
+            f"Skore Hub provider. Restart {harness.harness_display_name} or start "
+            f"a new session to "
+            f"use it."
+        )
+    else:
+        launch_harness(harness, workspace, model_id=model_id)

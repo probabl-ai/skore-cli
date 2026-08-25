@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from textual.app import App, ComposeResult
 from textual.widgets import SelectionList
 
@@ -10,7 +12,6 @@ from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpInput, HelpScreen
 from skore_cli.skills.app import (
     InstalledSkillsPicker,
-    ProbablSkillsFinder,
     ProbablSkillsInstaller,
 )
 
@@ -29,7 +30,6 @@ async def test_textual_apps_show_banner():
         HarnessPicker(HARNESSES),
         WorkspacePicker(WORKSPACES),
         InstalledSkillsPicker(["alpha"], title="Update skills"),
-        ProbablSkillsFinder(catalog),
         ProbablSkillsInstaller(catalog, agent=(), default_global=False),
     ]
 
@@ -72,6 +72,21 @@ async def test_harness_picker_cancel_returns_none():
         await pilot.pause()
 
     assert app.result is None
+
+
+def test_harness_picker_requires_selection(monkeypatch):
+    app = HarnessPicker(HARNESSES)
+    notifications = []
+    radio = SimpleNamespace(pressed_index=-1)
+
+    monkeypatch.setattr(app, "query_one", lambda *_: radio)
+    monkeypatch.setattr(
+        app, "notify", lambda message, **_: notifications.append(message)
+    )
+
+    app.action_confirm()
+
+    assert notifications == ["Select a harness."]
 
 
 async def test_harness_picker_help_screen():
@@ -119,6 +134,31 @@ async def test_workspace_picker_cancel_returns_none():
         await pilot.pause()
 
     assert app.result is None
+
+
+def test_workspace_picker_requires_selection(monkeypatch):
+    app = WorkspacePicker(WORKSPACES)
+    notifications = []
+    radio = SimpleNamespace(pressed_index=-1)
+
+    monkeypatch.setattr(app, "query_one", lambda *_: radio)
+    monkeypatch.setattr(
+        app, "notify", lambda message, **_: notifications.append(message)
+    )
+
+    app.action_confirm()
+
+    assert notifications == ["Select a workspace."]
+
+
+async def test_workspace_picker_help_screen():
+    app = WorkspacePicker(WORKSPACES, preselect=0)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("?")
+        await pilot.pause()
+
+        assert isinstance(app.screen, HelpScreen)
 
 
 # --------------------------------------------------------------------------- #

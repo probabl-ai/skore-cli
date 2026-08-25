@@ -6,6 +6,8 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from skore_cli._agents import normalize_harness_name
+
 SKORE_FILENAME = ".skore"
 
 
@@ -35,9 +37,7 @@ class SkoreConfig:
         api_key = data.get("api_key")
         if not hub_url or not workspace or workspace_id is None or not api_key:
             return None
-        harness = data.get("harness")
-        if harness == "claude-code":
-            harness = "claude"
+        harness = normalize_harness_name(data.get("harness"))
         return cls(
             hub_url=hub_url,
             workspace=workspace,

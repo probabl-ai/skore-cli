@@ -1,13 +1,4 @@
-"""Harness registry, detection and per-harness configuration writers.
-
-Supported harnesses: Bob Shell, Bob IDE, Claude, Cursor, OpenCode, Pi and GitHub
-Copilot. Each writer mirrors the copy-pastable setup snippets from the Skore Hub
-agent-setup UI.
-
-Cursor and the two Bobs are the odd ones out: they talk to the hub's MCP
-front-end rather than treating it as an OpenAI-compatible model provider, so they
-are configured with a server URL instead of a base URL and a model id.
-"""
+"""Unified agent registry, runtime detection, skills, and harness behavior."""
 
 from __future__ import annotations
 
@@ -16,13 +7,11 @@ import os
 import shutil
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from skore_cli._style import console
-from skore_cli.agent._skore_file import ensure_gitignore_entry
-
+DEFAULT_AGENT = "agents"
 DEFAULT_MODEL_ID = "skore-agent"
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
 OPENCODE_PROVIDER_KEY = "skore"
@@ -57,7 +46,7 @@ COPILOT_BINARIES = ("code", "code-insiders")
 
 @dataclass(frozen=True)
 class HarnessContext:
-    """Inputs shared by every harness writer."""
+    """Inputs shared by every harness configuration writer."""
 
     workspace: Path
     hub_url: str
@@ -66,6 +55,7 @@ class HarnessContext:
 
     @property
     def base_url(self) -> str:
+        """Return the OpenAI-compatible API base URL."""
         return f"{self.hub_url.rstrip('/')}/v1"
 
     @property
@@ -73,8 +63,38 @@ class HarnessContext:
         return f"{self.hub_url.rstrip('/')}/mcp"
 
 
+Configure = Callable[[HarnessContext], dict[str, Any]]
+Launch = Callable[[Path, str], None]
+
+
+@dataclass(frozen=True)
+class Agent:
+    """An agent and its optional detection, skills, and harness capabilities."""
+
+    name: str
+    label: str
+    env_var: str | None = None
+    detection_priority: int | None = None
+    skill_target: str | None = None
+    user_skills_dir: str | None = None
+    project_skills_dir: str | None = None
+    harness_name: str | None = None
+    harness_label: str | None = None
+    harness_binaries: tuple[str, ...] = ()
+    configure: Configure | None = None
+    launch: Launch | None = None
+
+    @property
+    def harness_display_name(self) -> str:
+        """Return the harness label shown to users."""
+        return self.harness_label or self.label
+
+
 def _configure_opencode(ctx: HarnessContext) -> dict[str, Any]:
     """Write ``opencode.json`` with the Skore Hub provider."""
+    from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
+
     config_path = ctx.workspace / "opencode.json"
     config: dict[str, Any] = {
         "$schema": OPENCODE_SCHEMA,
@@ -95,8 +115,6 @@ def _configure_opencode(ctx: HarnessContext) -> dict[str, Any]:
     ensure_gitignore_entry(ctx.workspace, "opencode.json")
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
 
-    # OpenCode auto-loads ``.opencode/plugins/``; the plugin stamps the
-    # harness chat id on every LLM request so the hub can isolate sessions.
     plugin_path = ctx.workspace / OPENCODE_SESSION_PLUGIN
     plugin_path.parent.mkdir(parents=True, exist_ok=True)
     plugin_path.write_text(OPENCODE_SESSION_PLUGIN_SOURCE)
@@ -107,6 +125,9 @@ def _configure_opencode(ctx: HarnessContext) -> dict[str, Any]:
 
 def _configure_claude(ctx: HarnessContext) -> dict[str, Any]:
     """Write ``.claude/settings.local.json`` for Claude."""
+    from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
+
     config_dir = ctx.workspace / ".claude"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "settings.local.json"
@@ -125,6 +146,9 @@ def _configure_claude(ctx: HarnessContext) -> dict[str, Any]:
 
 def _configure_pi(ctx: HarnessContext) -> dict[str, Any]:
     """Write ``.pi/agent/models.json`` for Pi."""
+    from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
+
     config_dir = ctx.workspace / ".pi" / "agent"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "models.json"
@@ -138,8 +162,6 @@ def _configure_pi(ctx: HarnessContext) -> dict[str, Any]:
                 "compat": {
                     "supportsDeveloperRole": False,
                     "supportsReasoningEffort": False,
-                    # Send Pi's chat session id as ``x-session-id`` so the hub
-                    # can key agent history per conversation.
                     "sendSessionAffinityHeaders": True,
                     "sessionAffinityFormat": "openrouter",
                 },
@@ -192,6 +214,9 @@ def _configure_cursor(ctx: HarnessContext) -> dict[str, Any]:
     These two files belong to Cursor, not to Skore, so they are read-modify-
     written: another MCP server or permission rule the user set up survives.
     """
+    from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
+
     config_dir = ctx.workspace / ".cursor"
     config_dir.mkdir(parents=True, exist_ok=True)
 
@@ -252,6 +277,9 @@ def _configure_bob(ctx: HarnessContext, transport: dict[str, str]) -> dict[str, 
     server's enabled state and the tool approval from the file, so there is no
     manual step left to the user.
     """
+    from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
+
     config_dir = ctx.workspace / ".bob"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "mcp.json"
@@ -283,6 +311,8 @@ def _configure_bob_shell(ctx: HarnessContext) -> dict[str, Any]:
 
 def _configure_bob_ide(ctx: HarnessContext) -> dict[str, Any]:
     """Configure Bob IDE, which reads a streamable-HTTP server from ``type``/``url``."""
+    from skore_cli._style import console
+
     written = _configure_bob(ctx, {"type": "streamable-http", "url": ctx.mcp_url})
     console.print(
         "[skore.muted]  raise the network timeout for "
@@ -293,12 +323,7 @@ def _configure_bob_ide(ctx: HarnessContext) -> dict[str, Any]:
 
 
 def _copilot_provider(ctx: HarnessContext) -> dict[str, Any]:
-    """Build the Custom Endpoint provider entry for VS Code Copilot Chat.
-
-    VS Code treats ``apiKey`` as a keychain secret reference, so a raw hub key
-    never reaches the wire. Auth is sent as a literal ``X-API-Key`` header
-    instead; ``apiKey`` is only a schema placeholder (``minLength: 1``).
-    """
+    """Build the Custom Endpoint provider entry for VS Code Copilot Chat."""
     return {
         "name": COPILOT_PROVIDER_NAME,
         "vendor": "customendpoint",
@@ -320,18 +345,20 @@ def _copilot_provider(ctx: HarnessContext) -> dict[str, Any]:
 
 
 def _configure_copilot(ctx: HarnessContext) -> dict[str, Any]:
-    """Write ``.vscode/chatLanguageModels.json`` for GitHub Copilot in VS Code."""
+    """Write the project configuration for GitHub Copilot in VS Code."""
+    from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
+
     config_path = ctx.workspace / COPILOT_PROJECT_CONFIG
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = [_copilot_provider(ctx)]
-    config_path.write_text(json.dumps(payload, indent=2) + "\n")
+    config_path.write_text(json.dumps([_copilot_provider(ctx)], indent=2) + "\n")
     ensure_gitignore_entry(ctx.workspace, COPILOT_PROJECT_CONFIG)
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
     return {"config_path": str(config_path)}
 
 
 def _resolve_copilot_binary() -> str | None:
-    """Return ``code`` or ``code-insiders`` when present on PATH."""
+    """Return the preferred VS Code binary available on PATH."""
     for name in COPILOT_BINARIES:
         if shutil.which(name) is not None:
             return name
@@ -343,7 +370,7 @@ def _vscode_app_dirname(binary: str) -> str:
 
 
 def _copilot_user_config_path(binary: str, *, home: Path | None = None) -> Path:
-    """Return the user-profile ``chatLanguageModels.json`` for ``binary``."""
+    """Return the user-profile language-model configuration path."""
     home = home or Path.home()
     app = _vscode_app_dirname(binary)
     if sys.platform == "darwin":
@@ -363,13 +390,12 @@ def _copilot_user_config_path(binary: str, *, home: Path | None = None) -> Path:
 
 
 def _upsert_copilot_provider(user_config_path: Path, provider: dict[str, Any]) -> None:
-    """Upsert the Skore provider into a user-level language models file."""
+    """Upsert the Skore provider into a user-level language-model file."""
     providers: list[Any] = []
     if user_config_path.is_file():
         try:
             providers = json.loads(user_config_path.read_text() or "[]")
         except json.JSONDecodeError as error:
-            # Overwriting would silently drop the other providers of the user.
             raise RuntimeError(
                 f"could not parse {user_config_path}; "
                 "add the Skore Agent provider from VS Code instead."
@@ -384,57 +410,14 @@ def _upsert_copilot_provider(user_config_path: Path, provider: dict[str, Any]) -
     user_config_path.write_text(json.dumps(updated, indent=2) + "\n")
 
 
-def _detect_opencode(_workspace: Path) -> bool:
-    return shutil.which("opencode") is not None
-
-
-def _detect_claude(_workspace: Path) -> bool:
-    return shutil.which("claude") is not None
-
-
-def _detect_pi(_workspace: Path) -> bool:
-    return shutil.which("pi") is not None
-
-
-def _detect_cursor(_workspace: Path) -> bool:
-    # The macOS app bundle is not enough: `_launch_cursor` needs the CLI, which
-    # only exists once the user runs "Shell Command: Install 'cursor' command".
-    return shutil.which("cursor") is not None
-
-
-def _detect_bob_shell(_workspace: Path) -> bool:
-    return shutil.which("bob") is not None
-
-
-def _detect_bob_ide(_workspace: Path) -> bool:
-    # `_launch_bob_ide` opens the bundle rather than a command, so the bundle is
-    # all that has to exist.
-    return BOB_IDE_APP_PATH.is_dir()
-
-
-def _detect_copilot(_workspace: Path) -> bool:
-    return _resolve_copilot_binary() is not None
-
-
-def launch_harness(
-    name: str, workspace: Path, *, model_id: str = DEFAULT_MODEL_ID
-) -> None:
-    """Launch the named harness in ``workspace``."""
-    harness = HARNESSES[name]
-    if not harness.detect(workspace):
-        raise RuntimeError(f"{harness.label} is not installed or not on PATH.")
-    console.print(f"[skore.ok]Launching[/] [skore.skill]{harness.label}[/] ...")
-    _LAUNCHERS[name](workspace, model_id=model_id)
-
-
-def _launch_opencode(workspace: Path, *, model_id: str) -> None:
+def _launch_opencode(_workspace: Path, model_id: str) -> None:
     _exec_harness(
         "opencode",
         ["opencode", "-m", f"{OPENCODE_PROVIDER_KEY}/{model_id}"],
     )
 
 
-def _launch_claude(workspace: Path, *, model_id: str) -> None:
+def _launch_claude(workspace: Path, _model_id: str) -> None:
     env = os.environ.copy()
     settings_path = workspace / ".claude" / "settings.local.json"
     if settings_path.is_file():
@@ -443,7 +426,7 @@ def _launch_claude(workspace: Path, *, model_id: str) -> None:
     _exec_harness("claude", ["claude"], env=env)
 
 
-def _launch_pi(workspace: Path, *, model_id: str) -> None:
+def _launch_pi(workspace: Path, model_id: str) -> None:
     env = os.environ.copy()
     env["PI_CODING_AGENT_DIR"] = str(workspace / ".pi" / "agent")
     _exec_harness(
@@ -453,26 +436,25 @@ def _launch_pi(workspace: Path, *, model_id: str) -> None:
     )
 
 
-def _launch_cursor(workspace: Path, *, model_id: str) -> None:
+def _launch_cursor(workspace: Path, _model_id: str) -> None:
     _exec_harness("cursor", ["cursor", str(workspace)])
 
 
-def _launch_bob_shell(workspace: Path, *, model_id: str) -> None:
-    # Bob Shell takes the workspace from the working directory, like opencode.
+def _launch_bob_shell(_workspace: Path, _model_id: str) -> None:
     _exec_harness("bob", ["bob"])
 
 
-def _launch_bob_ide(workspace: Path, *, model_id: str) -> None:
+def _launch_bob_ide(workspace: Path, _model_id: str) -> None:
     _exec_harness("open", ["open", "-a", str(BOB_IDE_APP_PATH), str(workspace)])
 
 
-def _launch_copilot(workspace: Path, *, model_id: str) -> None:
+def _launch_copilot(workspace: Path, _model_id: str) -> None:
+    from skore_cli._style import console
+
     binary = _resolve_copilot_binary()
     if binary is None:
         raise RuntimeError("GitHub Copilot is not installed or not on PATH.")
 
-    # VS Code only reads providers from the user profile, so the project config
-    # written by ``_configure_copilot`` has to be mirrored there.
     provider = json.loads((workspace / COPILOT_PROJECT_CONFIG).read_text())[0]
     user_config = _copilot_user_config_path(binary)
     _upsert_copilot_provider(user_config, provider)
@@ -493,76 +475,215 @@ def _exec_harness(
     os.execve(executable, argv, env or os.environ)
 
 
-_LAUNCHERS = {
-    "bob": _launch_bob_shell,
-    "bob-ide": _launch_bob_ide,
-    "claude": _launch_claude,
-    "cursor": _launch_cursor,
-    "opencode": _launch_opencode,
-    "pi": _launch_pi,
-    "copilot": _launch_copilot,
+AGENTS: dict[str, Agent] = {
+    "agents": Agent(
+        name="agents",
+        label="Agents",
+        user_skills_dir=".agents/skills",
+        project_skills_dir=".agents/skills",
+    ),
+    "claude-code": Agent(
+        name="claude-code",
+        label="Claude Code",
+        env_var="CLAUDECODE",
+        detection_priority=0,
+        user_skills_dir=".claude/skills",
+        project_skills_dir=".claude/skills",
+        harness_name="claude",
+        harness_label="Claude",
+        configure=_configure_claude,
+        launch=_launch_claude,
+    ),
+    "cursor": Agent(
+        name="cursor",
+        label="Cursor",
+        env_var="CURSOR_AGENT",
+        detection_priority=1,
+        user_skills_dir=".cursor/skills",
+        project_skills_dir=".cursor/skills",
+        harness_name="cursor",
+        harness_label="Cursor",
+        configure=_configure_cursor,
+        launch=_launch_cursor,
+    ),
+    "codex": Agent(
+        name="codex",
+        label="Codex CLI",
+        env_var="CODEX_SANDBOX",
+        detection_priority=3,
+        user_skills_dir=".agents/skills",
+        project_skills_dir=".agents/skills",
+    ),
+    "gemini": Agent(
+        name="gemini",
+        label="Gemini CLI",
+        env_var="GEMINI_CLI",
+        detection_priority=2,
+        user_skills_dir=".gemini/skills",
+        project_skills_dir=".agents/skills",
+    ),
+    "opencode": Agent(
+        name="opencode",
+        label="OpenCode",
+        env_var="OPENCODE_CLIENT",
+        detection_priority=5,
+        skill_target=DEFAULT_AGENT,
+        harness_name="opencode",
+        configure=_configure_opencode,
+        launch=_launch_opencode,
+    ),
+    "pi": Agent(
+        name="pi",
+        label="Pi",
+        env_var="PI_CODING_AGENT",
+        detection_priority=4,
+        skill_target=DEFAULT_AGENT,
+        harness_name="pi",
+        configure=_configure_pi,
+        launch=_launch_pi,
+    ),
+    "github-copilot": Agent(
+        name="github-copilot",
+        label="GitHub Copilot",
+        harness_name="copilot",
+        harness_binaries=COPILOT_BINARIES,
+        configure=_configure_copilot,
+        launch=_launch_copilot,
+    ),
+    "bob": Agent(
+        name="bob",
+        label="Bob Shell",
+        harness_name="bob",
+        harness_label="Bob Shell",
+        configure=_configure_bob_shell,
+        launch=_launch_bob_shell,
+    ),
+    "bob-ide": Agent(
+        name="bob-ide",
+        label="Bob IDE",
+        harness_name="bob-ide",
+        harness_label="Bob IDE",
+        configure=_configure_bob_ide,
+        launch=_launch_bob_ide,
+    ),
 }
 
-
-@dataclass(frozen=True)
-class Harness:
-    """A configurable agent harness."""
-
-    name: str
-    label: str
-    detect: Callable[[Path], bool]
-    configure: Callable[[HarnessContext], dict[str, Any]]
-    extras: tuple[str, ...] = field(default_factory=tuple)
+SKILL_AGENT_NAMES = [
+    agent.name for agent in AGENTS.values() if agent.project_skills_dir is not None
+]
+HARNESS_NAMES = [
+    agent.harness_name for agent in AGENTS.values() if agent.harness_name is not None
+]
 
 
-HARNESSES: dict[str, Harness] = {
-    "bob": Harness(
-        "bob",
-        "Bob Shell",
-        _detect_bob_shell,
-        _configure_bob_shell,
-    ),
-    "bob-ide": Harness(
-        "bob-ide",
-        "Bob IDE",
-        _detect_bob_ide,
-        _configure_bob_ide,
-    ),
-    "claude": Harness(
-        "claude",
-        "Claude",
-        _detect_claude,
-        _configure_claude,
-    ),
-    "cursor": Harness(
-        "cursor",
-        "Cursor",
-        _detect_cursor,
-        _configure_cursor,
-    ),
-    "opencode": Harness(
-        "opencode",
-        "OpenCode",
-        _detect_opencode,
-        _configure_opencode,
-    ),
-    "pi": Harness(
-        "pi",
-        "Pi",
-        _detect_pi,
-        _configure_pi,
-    ),
-    "copilot": Harness(
-        "copilot",
-        "GitHub Copilot",
-        _detect_copilot,
-        _configure_copilot,
-    ),
-}
-
-HARNESS_NAMES = list(HARNESSES)
+def detect_agent() -> Agent | None:
+    """Return the calling agent detected from the environment, if any."""
+    detectable = sorted(
+        (agent for agent in AGENTS.values() if agent.env_var is not None),
+        key=lambda agent: (
+            agent.detection_priority
+            if agent.detection_priority is not None
+            else len(AGENTS)
+        ),
+    )
+    for agent in detectable:
+        if os.environ.get(agent.env_var or "", ""):
+            return agent
+    return None
 
 
-def detect_harnesses(workspace: Path) -> list[str]:
-    """Return harness names that look installed, in registry order."""
-    return [name for name, harness in HARNESSES.items() if harness.detect(workspace)]
+def is_non_interactive() -> bool:
+    """Return whether the CLI should avoid TUIs and emit plain-text output."""
+    if os.environ.get("CI"):
+        return True
+    if detect_agent() is not None:
+        return True
+    return not (sys.stdin.isatty() and sys.stdout.isatty())
+
+
+def resolve_skill_agent(agent: Agent) -> Agent:
+    """Return the registry row that owns ``agent``'s skills directories."""
+    target = AGENTS[agent.skill_target] if agent.skill_target else agent
+    if target.user_skills_dir is None or target.project_skills_dir is None:
+        raise ValueError(f"{agent.name} has no skills target")
+    return target
+
+
+def resolve_targets(
+    agent_names: list[str],
+    *,
+    global_: bool,
+    home: Path | None = None,
+    cwd: Path | None = None,
+) -> list[tuple[str, Path]]:
+    """Resolve skill agent names to unique global or project directories."""
+    home = home or Path.home()
+    cwd = cwd or Path.cwd()
+
+    targets: list[tuple[str, Path]] = []
+    seen: set[Path] = set()
+    for name in agent_names:
+        agent = resolve_skill_agent(AGENTS[name])
+        subdir = agent.user_skills_dir if global_ else agent.project_skills_dir
+        assert subdir is not None
+        path = (home if global_ else cwd) / subdir
+        if path in seen:
+            continue
+        seen.add(path)
+        targets.append((name, path))
+    return targets
+
+
+def get_harness(name: str) -> Agent:
+    """Return the agent that provides the named harness."""
+    for agent in AGENTS.values():
+        if agent.harness_name == name:
+            return agent
+    raise KeyError(name)
+
+
+def normalize_harness_name(name: str | None) -> str | None:
+    """Return the current harness name for a persisted agent or harness name."""
+    if name is None:
+        return None
+    for agent in AGENTS.values():
+        if agent.harness_name and name in (agent.name, agent.harness_name):
+            return agent.harness_name
+    return name
+
+
+def is_harness_installed(agent: Agent) -> bool:
+    """Return whether ``agent``'s harness executable is on ``PATH``."""
+    if agent.harness_name == "bob-ide":
+        return BOB_IDE_APP_PATH.is_dir()
+    binaries = agent.harness_binaries or (
+        (agent.harness_name,) if agent.harness_name else ()
+    )
+    return any(shutil.which(binary) for binary in binaries)
+
+
+def installed_harnesses() -> list[Agent]:
+    """Return harness-capable agents whose executables are on ``PATH``."""
+    return [
+        agent
+        for agent in AGENTS.values()
+        if agent.harness_name is not None and is_harness_installed(agent)
+    ]
+
+
+def launch_harness(
+    agent: Agent, workspace: Path, *, model_id: str = DEFAULT_MODEL_ID
+) -> None:
+    """Launch ``agent``'s harness in ``workspace``."""
+    from skore_cli._style import console
+
+    if not is_harness_installed(agent):
+        raise RuntimeError(
+            f"{agent.harness_display_name} is not installed or not on PATH."
+        )
+    if agent.launch is None:
+        raise RuntimeError(f"{agent.name} has no harness launcher.")
+    console.print(
+        f"[skore.ok]Launching[/] [skore.skill]{agent.harness_display_name}[/] ..."
+    )
+    agent.launch(workspace, model_id)

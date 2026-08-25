@@ -4,6 +4,13 @@ from __future__ import annotations
 
 import rich_click as click
 
+import skore_cli._style  # noqa: F401  (applies the CLI palette and rich-click config)
+from skore_cli._agents import (
+    Agent,
+    detect_agent,
+    is_non_interactive,
+    resolve_skill_agent,
+)
 from skore_cli._plugins import load_plugins
 from skore_cli._style import SKORE_BANNER, console
 
@@ -21,19 +28,66 @@ click.rich_click.COMMAND_GROUPS = {
     ],
 }
 
+_COMMANDS = [
+    ("agent", "Authenticate, configure and launch a Skore Hub agent harness."),
+    ("skills", "Install and manage Agent Skills from the probabl-ai/skills release."),
+]
+
+
+def _render_help(detected: Agent | None) -> str:
+    """Build a plain-text help page, agent-flavored when ``detected`` is set."""
+    lines = ["Skore command-line interface.", ""]
+
+    if detected is not None:
+        lines.append(f"Detected: {detected.label}")
+        target = resolve_skill_agent(detected).project_skills_dir
+        lines.append(f"Skills target: {target}")
+        if detected.harness_name:
+            lines.append(f"Harness: {detected.harness_display_name}")
+        lines.append("")
+
+    lines.append("Quick start:")
+
+    if detected is not None:
+        skill_target = resolve_skill_agent(detected).project_skills_dir
+        lines.append(
+            f"  skore skills install all      Install all skills to {skill_target}"
+        )
+    else:
+        lines.append("  skore skills install all      Install all skills")
+    lines.append("  skore skills install <ids>    Install specific skills by id")
+
+    if detected is not None and detected.harness_name:
+        label = detected.harness_display_name
+        lines.append(
+            f"  skore agent                   "
+            f"Configure {label} with the Skore Hub provider"
+        )
+    else:
+        lines.append(
+            "  skore agent                   "
+            "Configure and launch a Skore Hub agent harness"
+        )
+
+    lines.append("")
+    lines.append("Commands:")
+    for name, desc in _COMMANDS:
+        lines.append(f"  {name:<7} {desc}")
+
+    return "\n".join(lines)
+
 
 @click.group(invoke_without_command=True)
 @click.pass_context
 @click.version_option(package_name="skore-cli")
 def cli(ctx) -> None:
-    """Skore command-line interface.
-
-    Use ``skore agent`` to connect a project to the Skore Hub agent, and
-    ``skore skills`` to install probabl-skills locally.
-    """
+    """Skore command-line interface."""
     if ctx.invoked_subcommand is None:
-        console.print(f"[bold cyan]{SKORE_BANNER}[/]")
-        click.echo(ctx.get_help())
+        if is_non_interactive():
+            click.echo(_render_help(detect_agent()))
+        else:
+            console.print(f"[bold cyan]{SKORE_BANNER}[/]")
+            click.echo(ctx.get_help())
 
 
 cli.add_command(skills)
