@@ -26,6 +26,16 @@ from skore_cli.agent._skore_file import ensure_gitignore_entry
 DEFAULT_MODEL_ID = "skore-agent"
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
 OPENCODE_PROVIDER_KEY = "skore"
+OPENCODE_SESSION_PLUGIN = ".opencode/plugins/skore-session.js"
+OPENCODE_SESSION_PLUGIN_SOURCE = """\
+export const SkoreSessionPlugin = async () => ({
+  "chat.headers": async (input, output) => {
+    if (input.sessionID) {
+      output.headers["X-Skore-Session-Id"] = input.sessionID;
+    }
+  },
+});
+"""
 CURSOR_SERVER_KEY = "skore"
 # Cursor concatenates the per-user and per-workspace allowlists, so this entry
 # applies on top of whatever the user already allows. A convenience, not a
@@ -84,7 +94,15 @@ def _configure_opencode(ctx: HarnessContext) -> dict[str, Any]:
     config_path.write_text(json.dumps(config, indent=2) + "\n")
     ensure_gitignore_entry(ctx.workspace, "opencode.json")
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
-    return {"config_path": str(config_path)}
+
+    # OpenCode auto-loads ``.opencode/plugins/``; the plugin stamps the
+    # harness chat id on every LLM request so the hub can isolate sessions.
+    plugin_path = ctx.workspace / OPENCODE_SESSION_PLUGIN
+    plugin_path.parent.mkdir(parents=True, exist_ok=True)
+    plugin_path.write_text(OPENCODE_SESSION_PLUGIN_SOURCE)
+    ensure_gitignore_entry(ctx.workspace, OPENCODE_SESSION_PLUGIN)
+    console.print(f"[skore.ok]+[/] wrote [skore.path]{plugin_path}[/]")
+    return {"config_path": str(config_path), "plugin_path": str(plugin_path)}
 
 
 def _configure_claude(ctx: HarnessContext) -> dict[str, Any]:
@@ -120,6 +138,10 @@ def _configure_pi(ctx: HarnessContext) -> dict[str, Any]:
                 "compat": {
                     "supportsDeveloperRole": False,
                     "supportsReasoningEffort": False,
+                    # Send Pi's chat session id as ``x-session-id`` so the hub
+                    # can key agent history per conversation.
+                    "sendSessionAffinityHeaders": True,
+                    "sessionAffinityFormat": "openrouter",
                 },
                 "models": [
                     {
