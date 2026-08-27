@@ -33,6 +33,8 @@ CODEX_PROVIDER_KEY = "skore"
 CODEX_PROVIDER_NAME = "Skore Agent"
 CODEX_PROJECT_CONFIG = ".codex/skore-provider.toml"
 CODEX_API_KEY_ENV = "SKORE_AGENT_API_KEY"
+SDK_API_KEY_ENV = "SKORE_HUB_API_KEY"
+SDK_URI_ENV = "SKORE_HUB_URI"
 
 
 @dataclass(frozen=True)
@@ -412,6 +414,24 @@ def _launch_codex(workspace: Path, model_id: str) -> None:
     _exec_harness("codex", argv, env=env)
 
 
+def _export_sdk_credentials(workspace: Path) -> None:
+    """Publish the ``.skore`` credentials the ``skore`` package reads.
+
+    The harness config only authenticates the harness itself. ``skore.login()``
+    looks the API key up in ``SKORE_HUB_API_KEY`` and otherwise falls back to an
+    interactive browser flow, so every experiment process the agent spawns would
+    open its own OAuth tab. Values already present in the environment win, so a
+    user's own key or hub keeps precedence.
+    """
+    from skore_cli.agent._skore_file import SkoreConfig
+
+    config = SkoreConfig.load(workspace)
+    if config is None:
+        return
+    os.environ.setdefault(SDK_API_KEY_ENV, config.api_key)
+    os.environ.setdefault(SDK_URI_ENV, config.hub_url)
+
+
 def _exec_harness(
     name: str, argv: list[str], *, env: dict[str, str] | None = None
 ) -> None:
@@ -614,4 +634,5 @@ def launch_harness(
     console.print(
         f"[skore.ok]Launching[/] [skore.skill]{agent.harness_display_name}[/] ..."
     )
+    _export_sdk_credentials(workspace)
     agent.launch(workspace, model_id)
