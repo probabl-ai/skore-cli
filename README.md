@@ -48,6 +48,11 @@ launches the agent. Supported harnesses: **Claude**, **OpenCode**, **Pi**,
 in the project directory (gitignored). Use `SKORE_HUB_URI` (or `--hub-url`) to
 point at a non-default hub.
 
+Launching a harness exports the `.skore` credentials as `SKORE_HUB_API_KEY` and
+`SKORE_HUB_URI`, so `skore.login()` in the scripts the agent runs authenticates
+with that key instead of opening a browser. Values already set in your
+environment are left untouched.
+
 ```bash
 skore agent
 skore agent --harness claude    # non-interactive harness choice
