@@ -96,3 +96,12 @@ def workspace(monkeypatch, tmp_path):
     monkeypatch.chdir(project)
 
     return SimpleNamespace(home=home, project=project)
+
+
+@pytest.fixture(autouse=True)
+def monkeypatch_sdk_env(monkeypatch):
+    """Unset the SDK credential variables."""
+    from skore_cli._agents import SDK_API_KEY_ENV, SDK_URI_ENV
+
+    monkeypatch.delenv(SDK_API_KEY_ENV, raising=False)
+    monkeypatch.delenv(SDK_URI_ENV, raising=False)
