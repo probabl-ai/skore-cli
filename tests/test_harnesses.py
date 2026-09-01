@@ -94,6 +94,12 @@ def test_pi_config_matches_hub_ui(tmp_path):
     model = config["providers"]["skore"]["models"][0]
     assert model["id"] == "skore-agent"
     assert model["contextWindow"] == 200000
+    assert model["cost"] == {
+        "input": 3.0,
+        "output": 15.0,
+        "cacheRead": 0.3,
+        "cacheWrite": 3.75,
+    }
     compat = config["providers"]["skore"]["compat"]
     assert compat["sendSessionAffinityHeaders"] is True
     assert compat["sessionAffinityFormat"] == "openrouter"
