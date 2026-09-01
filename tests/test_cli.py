@@ -106,7 +106,8 @@ def test_cli_help_cursor_detected(monkeypatch):
     assert result.exit_code == 0
     assert "Detected: Cursor" in result.output
     assert "Skills target: .cursor/skills" in result.output
-    assert "Harness:" not in result.output
+    assert "Harness: Cursor" in result.output
+    assert "Configure Cursor with the Skore Hub provider" in result.output
 
 
 def test_cli_help_opencode_detected(monkeypatch):

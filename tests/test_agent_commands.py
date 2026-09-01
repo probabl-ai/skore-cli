@@ -11,7 +11,7 @@ import rich_click as click
 from click.testing import CliRunner
 
 from skore_cli import _agents
-from skore_cli._agents import AGENTS, DEFAULT_MODEL_ID, HarnessContext
+from skore_cli._agents import AGENTS, DEFAULT_MODEL_ID, HARNESS_NAMES, HarnessContext
 from skore_cli.agent import _client, _commands
 from skore_cli.agent import app as _agent_app
 from skore_cli.agent._commands import agent
@@ -156,6 +156,16 @@ def test_agent_nonexistent_workspace_errors(tmp_path):
     result = CliRunner().invoke(agent, ["--workspace", str(missing)])
     assert result.exit_code != 0
     assert "workspace does not exist" in result.output
+
+
+def test_agent_invalid_harness_lists_all_supported_harnesses(tmp_path):
+    result = CliRunner().invoke(
+        agent, ["--workspace", str(tmp_path), "--harness", "does-not-exist"]
+    )
+    assert result.exit_code != 0
+    output = _plain_output(result.output)
+    for name in HARNESS_NAMES:
+        assert name in output
 
 
 def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):

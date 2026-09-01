@@ -27,6 +27,21 @@ def _ctx(workspace, **kwargs):
     )
 
 
+@pytest.fixture(autouse=True)
+def no_bob_ide_app(tmp_path, monkeypatch):
+    """Keep detection off the real machine: Bob IDE is found by its bundle on
+    macOS and by the ``bob-ide`` binary on other platforms."""
+    monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
+    _real_which = _agents.shutil.which
+
+    def _which(name):
+        if name == "bob-ide":
+            return None
+        return _real_which(name)
+
+    monkeypatch.setattr(_agents.shutil, "which", _which)
+
+
 def test_opencode_installed_by_binary(monkeypatch):
     monkeypatch.setattr(
         _agents.shutil,
@@ -53,6 +68,49 @@ def test_pi_installed_by_binary(monkeypatch):
         lambda name: "/usr/bin/pi" if name == "pi" else None,
     )
     assert [agent.harness_name for agent in installed_harnesses()] == ["pi"]
+
+
+def test_cursor_installed_by_binary(monkeypatch):
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda name: "/usr/local/bin/cursor" if name == "cursor" else None,
+    )
+    assert is_harness_installed(AGENTS["cursor"]) is True
+    assert [agent.harness_name for agent in installed_harnesses()] == ["cursor"]
+
+
+def test_bob_shell_installed_by_binary(monkeypatch):
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda name: "/usr/local/bin/bob" if name == "bob" else None,
+    )
+    assert is_harness_installed(AGENTS["bob"]) is True
+    assert [agent.harness_name for agent in installed_harnesses()] == ["bob"]
+
+
+def test_bob_ide_installed_by_app_bundle(tmp_path, monkeypatch):
+    """On macOS the IDE installs no command, so detection uses the bundle."""
+    monkeypatch.setattr(_agents.sys, "platform", "darwin")
+    bundle = tmp_path / "IBM Bob.app"
+    bundle.mkdir()
+    monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", bundle)
+    monkeypatch.setattr(_agents.shutil, "which", lambda name: None)
+    assert is_harness_installed(AGENTS["bob-ide"]) is True
+    assert [agent.harness_name for agent in installed_harnesses()] == ["bob-ide"]
+
+
+def test_bob_ide_installed_by_binary_on_non_darwin(tmp_path, monkeypatch):
+    """On non-macOS the IDE installs a ``bob-ide`` command on PATH."""
+    monkeypatch.setattr(_agents.sys, "platform", "linux")
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda name: "/usr/bin/bob-ide" if name == "bob-ide" else None,
+    )
+    assert is_harness_installed(AGENTS["bob-ide"]) is True
+    assert [agent.harness_name for agent in installed_harnesses()] == ["bob-ide"]
 
 
 def test_installed_harnesses_excludes_missing(monkeypatch):
@@ -91,6 +149,175 @@ def test_pi_config_matches_hub_ui(tmp_path):
     assert compat["sessionAffinityFormat"] == "openrouter"
 
 
+def test_cursor_config_points_at_the_mcp_endpoint(tmp_path):
+    AGENTS["cursor"].configure(_ctx(tmp_path))
+
+    config = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    assert config["mcpServers"]["skore"] == {
+        "type": "http",
+        "url": "http://hub.test/mcp",
+        "headers": {"Authorization": "Bearer secret-key"},
+    }
+
+    permissions = json.loads((tmp_path / ".cursor" / "permissions.json").read_text())
+    assert permissions["mcpAllowlist"] == ["skore:*"]
+    assert permissions["autoRun"]["allow_instructions"] == [
+        "curl fetching a Skore materialize URL under /v1/materialize/ to write "
+        "a template or script into the workspace",
+        "calls to the skore MCP server's skore_agent tool",
+    ]
+
+
+def test_bob_shell_config_declares_the_streamable_http_url(tmp_path):
+    """Bob Shell reads ``httpURL``; a plain ``url`` would mean legacy SSE."""
+    AGENTS["bob"].configure(_ctx(tmp_path))
+
+    config = json.loads((tmp_path / ".bob" / "mcp.json").read_text())
+    assert config["mcpServers"]["skore"] == {
+        "httpURL": "http://hub.test/mcp",
+        "headers": {"Authorization": "Bearer secret-key"},
+        "alwaysAllow": ["skore_agent"],
+        "disabled": False,
+    }
+
+
+def test_bob_ide_config_declares_the_transport_type(tmp_path):
+    """Bob IDE reads the same file but wants ``type`` alongside ``url``."""
+    AGENTS["bob-ide"].configure(_ctx(tmp_path))
+
+    config = json.loads((tmp_path / ".bob" / "mcp.json").read_text())
+    assert config["mcpServers"]["skore"] == {
+        "type": "streamable-http",
+        "url": "http://hub.test/mcp",
+        "headers": {"Authorization": "Bearer secret-key"},
+        "alwaysAllow": ["skore_agent"],
+        "disabled": False,
+    }
+
+
+def test_bob_config_preserves_what_the_user_already_had(tmp_path):
+    config_dir = tmp_path / ".bob"
+    config_dir.mkdir()
+    (config_dir / "mcp.json").write_text(
+        json.dumps({"mcpServers": {"other": {"command": "node"}}})
+    )
+
+    AGENTS["bob"].configure(_ctx(tmp_path))
+
+    config = json.loads((config_dir / "mcp.json").read_text())
+    assert set(config["mcpServers"]) == {"other", "skore"}
+    assert config["mcpServers"]["other"] == {"command": "node"}
+
+
+def test_bob_config_is_idempotent(tmp_path):
+    AGENTS["bob"].configure(_ctx(tmp_path))
+    AGENTS["bob"].configure(_ctx(tmp_path))
+
+    config = json.loads((tmp_path / ".bob" / "mcp.json").read_text())
+    assert config["mcpServers"]["skore"]["alwaysAllow"] == ["skore_agent"]
+    assert (tmp_path / ".gitignore").read_text().count(".bob/mcp.json") == 1
+
+
+def test_bob_config_refuses_to_overwrite_what_it_cannot_read(tmp_path):
+    config_dir = tmp_path / ".bob"
+    config_dir.mkdir()
+    (config_dir / "mcp.json").write_text("{not json")
+
+    with pytest.raises(RuntimeError, match="mcp.json"):
+        AGENTS["bob"].configure(_ctx(tmp_path))
+
+    assert (config_dir / "mcp.json").read_text() == "{not json"
+
+
+@pytest.mark.parametrize(
+    "name, entry",
+    [
+        ("opencode", "opencode.json"),
+        ("claude-code", ".claude/settings.local.json"),
+        ("pi", ".pi/agent/models.json"),
+        ("cursor", ".cursor/mcp.json"),
+        ("bob", ".bob/mcp.json"),
+        ("bob-ide", ".bob/mcp.json"),
+    ],
+)
+def test_config_embedding_the_api_key_is_gitignored(tmp_path, name, entry):
+    AGENTS[name].configure(_ctx(tmp_path))
+
+    assert "secret-key" in (tmp_path / entry).read_text()
+    assert entry in (tmp_path / ".gitignore").read_text().splitlines()
+
+
+def test_cursor_permissions_are_not_gitignored(tmp_path):
+    """They hold no secret, and a team may well want them committed."""
+    AGENTS["cursor"].configure(_ctx(tmp_path))
+    gitignore = (tmp_path / ".gitignore").read_text()
+    assert "permissions.json" not in gitignore
+
+
+def test_cursor_config_preserves_what_the_user_already_had(tmp_path):
+    config_dir = tmp_path / ".cursor"
+    config_dir.mkdir()
+    (config_dir / "mcp.json").write_text(
+        json.dumps({"mcpServers": {"other": {"url": "http://elsewhere"}}})
+    )
+    (config_dir / "permissions.json").write_text(
+        json.dumps(
+            {
+                "mcpAllowlist": ["other:*"],
+                "allow": ["Read(**)"],
+                "autoRun": {"allow_instructions": ["anything the user allowed"]},
+            }
+        )
+    )
+
+    AGENTS["cursor"].configure(_ctx(tmp_path))
+
+    config = json.loads((config_dir / "mcp.json").read_text())
+    assert set(config["mcpServers"]) == {"other", "skore"}
+    assert config["mcpServers"]["other"] == {"url": "http://elsewhere"}
+
+    permissions = json.loads((config_dir / "permissions.json").read_text())
+    assert permissions["mcpAllowlist"] == ["other:*", "skore:*"]
+    assert permissions["allow"] == ["Read(**)"]
+    assert permissions["autoRun"]["allow_instructions"][0] == (
+        "anything the user allowed"
+    )
+    assert len(permissions["autoRun"]["allow_instructions"]) == 3
+
+
+def test_cursor_config_is_idempotent(tmp_path):
+    AGENTS["cursor"].configure(_ctx(tmp_path))
+    AGENTS["cursor"].configure(_ctx(tmp_path))
+
+    permissions = json.loads((tmp_path / ".cursor" / "permissions.json").read_text())
+    assert permissions["mcpAllowlist"] == ["skore:*"]
+    assert len(permissions["autoRun"]["allow_instructions"]) == 2
+
+
+@pytest.mark.parametrize("content", ["{not json", "// a comment\n{}", "[]"])
+def test_cursor_config_refuses_to_overwrite_what_it_cannot_read(tmp_path, content):
+    """Cursor accepts comments in these files; wiping one would lose real config."""
+    config_dir = tmp_path / ".cursor"
+    config_dir.mkdir()
+    (config_dir / "mcp.json").write_text(content)
+
+    with pytest.raises(RuntimeError, match="mcp.json"):
+        AGENTS["cursor"].configure(_ctx(tmp_path))
+
+    assert (config_dir / "mcp.json").read_text() == content
+
+
+def test_cursor_config_writes_nothing_when_permissions_cannot_be_read(tmp_path):
+    config_dir = tmp_path / ".cursor"
+    config_dir.mkdir()
+    (config_dir / "permissions.json").write_text("{not json")
+
+    with pytest.raises(RuntimeError, match="permissions.json"):
+        AGENTS["cursor"].configure(_ctx(tmp_path))
+
+    assert not (config_dir / "mcp.json").exists()
+
+
 def test_launch_opencode_passes_model_flag(tmp_path, monkeypatch):
     captured: dict[str, list[str]] = {}
 
@@ -123,6 +350,74 @@ def test_launch_pi_passes_provider_and_model(tmp_path, monkeypatch):
     _agents.launch_harness(AGENTS["pi"], tmp_path, model_id="skore-agent")
     assert captured["argv"] == ["pi", "--provider", "skore", "--model", "skore-agent"]
     assert "PI_CODING_AGENT_DIR" in captured["env"]
+
+
+def test_launch_cursor_opens_the_workspace(tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+        captured["env"] = env
+
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda cmd: "/usr/local/bin/cursor" if cmd == "cursor" else None,
+    )
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    _agents.launch_harness(AGENTS["cursor"], tmp_path)
+    assert captured["argv"] == ["cursor", str(tmp_path)]
+    # The key lives in mcp.json, so no environment has to reach the app and a
+    # window opened any other way works just as well.
+    assert captured["env"] is None
+
+
+def test_launch_bob_shell_takes_the_workspace_from_the_cwd(tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda cmd: "/usr/local/bin/bob" if cmd == "bob" else None,
+    )
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    _agents.launch_harness(AGENTS["bob"], tmp_path)
+    assert captured["argv"] == ["bob"]
+
+
+def test_launch_bob_ide_opens_the_app_bundle(tmp_path, monkeypatch):
+    monkeypatch.setattr(_agents.sys, "platform", "darwin")
+    captured: dict[str, object] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    bundle = tmp_path / "IBM Bob.app"
+    bundle.mkdir()
+    monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", bundle)
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    _agents.launch_harness(AGENTS["bob-ide"], tmp_path)
+    assert captured["argv"] == ["open", "-a", str(bundle), str(tmp_path)]
+
+
+def test_launch_bob_ide_uses_binary_on_non_darwin(tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    monkeypatch.setattr(_agents.sys, "platform", "linux")
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda name: "/usr/bin/bob-ide" if name == "bob-ide" else None,
+    )
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    _agents.launch_harness(AGENTS["bob-ide"], tmp_path)
+    assert captured["argv"] == ["bob-ide", str(tmp_path)]
 
 
 def test_launch_errors_when_binary_missing(tmp_path, monkeypatch):

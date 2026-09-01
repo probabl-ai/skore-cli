@@ -43,10 +43,11 @@ skore skills remove        # remove installed skills
 
 On the first run, `skore agent` logs in when needed, lets you pick a workspace
 and harness, creates a workspace API key, writes the harness configuration and
-launches the agent. Supported harnesses: **Claude**, **OpenCode**, **Pi**,
-**GitHub Copilot** and **Codex** (must be on `PATH`). Later runs reuse `.skore`
-in the project directory (gitignored). Use `SKORE_HUB_URI` (or `--hub-url`) to
-point at a non-default hub.
+launches the agent. Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude**,
+**Cursor**, **OpenCode**, **Pi**, **GitHub Copilot** and **Codex** (all must be on
+`PATH`; on macOS, Bob IDE is found via its application bundle). Later runs reuse
+`.skore` in the project directory (gitignored). Use `SKORE_HUB_URI` (or
+`--hub-url`) to point at a non-default hub.
 
 Launching a harness exports the `.skore` credentials as `SKORE_HUB_API_KEY` and
 `SKORE_HUB_URI`, so `skore.login()` in the scripts the agent runs authenticates

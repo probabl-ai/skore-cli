@@ -14,8 +14,12 @@ from typing import Any
 
 DEFAULT_AGENT = "agents"
 DEFAULT_MODEL_ID = "skore-agent"
+# Name under which Skore registers in each harness config (model provider or
+# MCP server).
+SKORE_PROVIDER_KEY = "skore"
+
+# OpenCode
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
-OPENCODE_PROVIDER_KEY = "skore"
 OPENCODE_SESSION_PLUGIN = ".opencode/plugins/skore-session.js"
 OPENCODE_SESSION_PLUGIN_SOURCE = """\
 export const SkoreSessionPlugin = async () => ({
@@ -26,6 +30,26 @@ export const SkoreSessionPlugin = async () => ({
   },
 });
 """
+
+# Cursor
+# Cursor concatenates the per-user and per-workspace allowlists, so this entry
+# applies on top of whatever the user already allows. A convenience, not a
+# security boundary.
+CURSOR_ALLOWLIST_ENTRY = "skore:*"
+CURSOR_AUTORUN_INSTRUCTIONS = (
+    "curl fetching a Skore materialize URL under /v1/materialize/ to write a "
+    "template or script into the workspace",
+    "calls to the skore MCP server's skore_agent tool",
+)
+
+# Bob
+# On macOS, Bob IDE ships as an application bundle with no command on PATH.
+# On Windows it installs a ``bob-ide`` command; on Linux the .deb/.rpm package
+# does the same. The macOS bundle path is a module constant so tests can point
+# it somewhere that does not exist.
+BOB_IDE_APP_PATH = Path("/Applications/IBM Bob.app")
+
+# GitHub Copilot
 COPILOT_PROVIDER_NAME = "Skore Agent"
 COPILOT_PROJECT_CONFIG = ".vscode/chatLanguageModels.json"
 COPILOT_BINARIES = ("code", "code-insiders")
@@ -50,6 +74,10 @@ class HarnessContext:
     def base_url(self) -> str:
         """Return the OpenAI-compatible API base URL."""
         return f"{self.hub_url.rstrip('/')}/v1"
+
+    @property
+    def mcp_url(self) -> str:
+        return f"{self.hub_url.rstrip('/')}/mcp"
 
 
 Configure = Callable[[HarnessContext], dict[str, Any]]
@@ -87,9 +115,9 @@ def _configure_opencode(ctx: HarnessContext) -> dict[str, Any]:
     config_path = ctx.workspace / "opencode.json"
     config: dict[str, Any] = {
         "$schema": OPENCODE_SCHEMA,
-        "model": f"{OPENCODE_PROVIDER_KEY}/{ctx.model_id}",
+        "model": f"{SKORE_PROVIDER_KEY}/{ctx.model_id}",
         "provider": {
-            OPENCODE_PROVIDER_KEY: {
+            SKORE_PROVIDER_KEY: {
                 "npm": "@ai-sdk/openai-compatible",
                 "name": "Skore Hub",
                 "options": {
@@ -101,6 +129,7 @@ def _configure_opencode(ctx: HarnessContext) -> dict[str, Any]:
         },
     }
     config_path.write_text(json.dumps(config, indent=2) + "\n")
+    ensure_gitignore_entry(ctx.workspace, "opencode.json")
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
 
     plugin_path = ctx.workspace / OPENCODE_SESSION_PLUGIN
@@ -114,6 +143,7 @@ def _configure_opencode(ctx: HarnessContext) -> dict[str, Any]:
 def _configure_claude(ctx: HarnessContext) -> dict[str, Any]:
     """Write ``.claude/settings.local.json`` for Claude."""
     from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
 
     config_dir = ctx.workspace / ".claude"
     config_dir.mkdir(parents=True, exist_ok=True)
@@ -126,6 +156,7 @@ def _configure_claude(ctx: HarnessContext) -> dict[str, Any]:
         }
     }
     config_path.write_text(json.dumps(payload, indent=2) + "\n")
+    ensure_gitignore_entry(ctx.workspace, ".claude/settings.local.json")
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
     return {"config_path": str(config_path)}
 
@@ -133,13 +164,14 @@ def _configure_claude(ctx: HarnessContext) -> dict[str, Any]:
 def _configure_pi(ctx: HarnessContext) -> dict[str, Any]:
     """Write ``.pi/agent/models.json`` for Pi."""
     from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
 
     config_dir = ctx.workspace / ".pi" / "agent"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "models.json"
     payload = {
         "providers": {
-            "skore": {
+            SKORE_PROVIDER_KEY: {
                 "baseUrl": ctx.base_url,
                 "api": "openai-completions",
                 "apiKey": ctx.api_key,
@@ -164,8 +196,151 @@ def _configure_pi(ctx: HarnessContext) -> dict[str, Any]:
         }
     }
     config_path.write_text(json.dumps(payload, indent=2) + "\n")
+    ensure_gitignore_entry(ctx.workspace, ".pi/agent/models.json")
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
     return {"config_path": str(config_path)}
+
+
+def _load_json_object(path: Path) -> dict[str, Any]:
+    """Return the JSON object stored at ``path``, or an empty one when absent.
+
+    Refuses anything else: the caller writes the result back, so treating an
+    unreadable file as empty would drop the servers and rules it holds. Cursor
+    accepts comments in these files and Python's parser does not.
+    """
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text() or "{}")
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            f"{path} is not valid JSON (comments are not supported here); "
+            "fix or move it, then run `skore agent` again."
+        ) from error
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            f"{path} does not hold a JSON object; fix or move it, then run "
+            "`skore agent` again."
+        )
+    return data
+
+
+def _configure_cursor(ctx: HarnessContext) -> dict[str, Any]:
+    """Point Cursor's MCP client at the hub and pre-approve the Skore tools.
+
+    These two files belong to Cursor, not to Skore, so they are read-modify-
+    written: another MCP server or permission rule the user set up survives.
+    """
+    from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
+
+    config_dir = ctx.workspace / ".cursor"
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    config_path = config_dir / "mcp.json"
+    permissions_path = config_dir / "permissions.json"
+    # Both files are read up front so an unreadable second one cannot leave the
+    # workspace half-configured.
+    config = _load_json_object(config_path)
+    permissions = _load_json_object(permissions_path)
+
+    servers = config.get("mcpServers")
+    if not isinstance(servers, dict):
+        servers = {}
+    servers[SKORE_PROVIDER_KEY] = {
+        # Without an explicit transport Cursor probes streamable HTTP and, on
+        # any failure, retries the same URL as legacy SSE, which the hub does
+        # not serve: the real error is then buried under an SSE 404.
+        "type": "http",
+        "url": ctx.mcp_url,
+        # Written out rather than interpolated from the environment: Cursor
+        # resolves ${env:...} against its own process, which is whatever
+        # launched the app, not `skore agent`.
+        "headers": {"Authorization": f"Bearer {ctx.api_key}"},
+    }
+    config["mcpServers"] = servers
+    config_path.write_text(json.dumps(config, indent=2) + "\n")
+    ensure_gitignore_entry(ctx.workspace, ".cursor/mcp.json")
+
+    allowlist = permissions.get("mcpAllowlist")
+    if not isinstance(allowlist, list):
+        allowlist = []
+    if CURSOR_ALLOWLIST_ENTRY not in allowlist:
+        allowlist.append(CURSOR_ALLOWLIST_ENTRY)
+    permissions["mcpAllowlist"] = allowlist
+    auto_run = permissions.get("autoRun")
+    if not isinstance(auto_run, dict):
+        auto_run = {}
+    instructions = auto_run.get("allow_instructions")
+    if not isinstance(instructions, list):
+        instructions = []
+    for instruction in CURSOR_AUTORUN_INSTRUCTIONS:
+        if instruction not in instructions:
+            instructions.append(instruction)
+    auto_run["allow_instructions"] = instructions
+    permissions["autoRun"] = auto_run
+    permissions_path.write_text(json.dumps(permissions, indent=2) + "\n")
+
+    console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
+    console.print(f"[skore.ok]+[/] wrote [skore.path]{permissions_path}[/]")
+    console.print(
+        f"[skore.muted]  turn [skore.skill]{SKORE_PROVIDER_KEY}[/] on under "
+        f"Settings -> Tools & MCP; Cursor asks once per change to this file[/]"
+    )
+    return {"config_path": str(config_path)}
+
+
+def _configure_bob(ctx: HarnessContext, transport: dict[str, str]) -> dict[str, Any]:
+    """Register the hub's MCP server in ``.bob/mcp.json``.
+
+    Both Bobs read this file but declare a streamable-HTTP server differently,
+    so the transport keys come from the caller. Unlike Cursor, Bob takes the
+    server's enabled state and the tool approval from the file, so there is no
+    manual step left to the user.
+    """
+    from skore_cli._style import console
+    from skore_cli.agent._skore_file import ensure_gitignore_entry
+
+    config_dir = ctx.workspace / ".bob"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / "mcp.json"
+
+    config = _load_json_object(config_path)
+    servers = config.get("mcpServers")
+    if not isinstance(servers, dict):
+        servers = {}
+    servers[SKORE_PROVIDER_KEY] = {
+        **transport,
+        "headers": {"Authorization": f"Bearer {ctx.api_key}"},
+        "alwaysAllow": ["skore_agent"],
+        "disabled": False,
+    }
+    config["mcpServers"] = servers
+    config_path.write_text(json.dumps(config, indent=2) + "\n")
+    ensure_gitignore_entry(ctx.workspace, ".bob/mcp.json")
+
+    console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
+    return {"config_path": str(config_path)}
+
+
+def _configure_bob_shell(ctx: HarnessContext) -> dict[str, Any]:
+    """Configure Bob Shell, which reads a streamable-HTTP server from ``httpURL``."""
+    # A plain `url` would be read as the legacy SSE endpoint, which the hub does
+    # not serve.
+    return _configure_bob(ctx, {"httpURL": ctx.mcp_url})
+
+
+def _configure_bob_ide(ctx: HarnessContext) -> dict[str, Any]:
+    """Configure Bob IDE, which reads a streamable-HTTP server from ``type``/``url``."""
+    from skore_cli._style import console
+
+    written = _configure_bob(ctx, {"type": "streamable-http", "url": ctx.mcp_url})
+    console.print(
+        "[skore.muted]  raise the network timeout for "
+        f"[skore.skill]{SKORE_PROVIDER_KEY}[/] to 5 minutes under Settings -> MCP; a "
+        "turn can outlast the 1 minute default[/]"
+    )
+    return written
 
 
 def _copilot_provider(ctx: HarnessContext) -> dict[str, Any]:
@@ -319,7 +494,7 @@ def _configure_codex(ctx: HarnessContext) -> dict[str, Any]:
 def _launch_opencode(_workspace: Path, model_id: str) -> None:
     _exec_harness(
         "opencode",
-        ["opencode", "-m", f"{OPENCODE_PROVIDER_KEY}/{model_id}"],
+        ["opencode", "-m", f"{SKORE_PROVIDER_KEY}/{model_id}"],
     )
 
 
@@ -337,9 +512,24 @@ def _launch_pi(workspace: Path, model_id: str) -> None:
     env["PI_CODING_AGENT_DIR"] = str(workspace / ".pi" / "agent")
     _exec_harness(
         "pi",
-        ["pi", "--provider", OPENCODE_PROVIDER_KEY, "--model", model_id],
+        ["pi", "--provider", SKORE_PROVIDER_KEY, "--model", model_id],
         env=env,
     )
+
+
+def _launch_cursor(workspace: Path, _model_id: str) -> None:
+    _exec_harness("cursor", ["cursor", str(workspace)])
+
+
+def _launch_bob_shell(_workspace: Path, _model_id: str) -> None:
+    _exec_harness("bob", ["bob"])
+
+
+def _launch_bob_ide(workspace: Path, _model_id: str) -> None:
+    if sys.platform == "darwin":
+        _exec_harness("open", ["open", "-a", str(BOB_IDE_APP_PATH), str(workspace)])
+    else:
+        _exec_harness("bob-ide", ["bob-ide", str(workspace)])
 
 
 def _launch_copilot(workspace: Path, _model_id: str) -> None:
@@ -467,6 +657,10 @@ AGENTS: dict[str, Agent] = {
         detection_priority=1,
         user_skills_dir=".cursor/skills",
         project_skills_dir=".cursor/skills",
+        harness_name="cursor",
+        harness_label="Cursor",
+        configure=_configure_cursor,
+        launch=_launch_cursor,
     ),
     "codex": Agent(
         name="codex",
@@ -515,6 +709,23 @@ AGENTS: dict[str, Agent] = {
         harness_binaries=COPILOT_BINARIES,
         configure=_configure_copilot,
         launch=_launch_copilot,
+    ),
+    "bob": Agent(
+        name="bob",
+        label="Bob Shell",
+        harness_name="bob",
+        harness_label="Bob Shell",
+        configure=_configure_bob_shell,
+        launch=_launch_bob_shell,
+    ),
+    "bob-ide": Agent(
+        name="bob-ide",
+        label="Bob IDE",
+        harness_name="bob-ide",
+        harness_label="Bob IDE",
+        harness_binaries=("bob-ide",),
+        configure=_configure_bob_ide,
+        launch=_launch_bob_ide,
     ),
 }
 
@@ -604,6 +815,8 @@ def normalize_harness_name(name: str | None) -> str | None:
 
 def is_harness_installed(agent: Agent) -> bool:
     """Return whether ``agent``'s harness executable is on ``PATH``."""
+    if agent.harness_name == "bob-ide" and sys.platform == "darwin":
+        return BOB_IDE_APP_PATH.is_dir()
     binaries = agent.harness_binaries or (
         (agent.harness_name,) if agent.harness_name else ()
     )

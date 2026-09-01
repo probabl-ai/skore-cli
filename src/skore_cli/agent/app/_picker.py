@@ -21,7 +21,10 @@ _HARNESS_HELP = """\
 Pick the local coding agent to configure and launch.
 
 Supported harnesses:
+  • Bob Shell    — writes .bob/mcp.json
+  • Bob IDE      — writes .bob/mcp.json
   • Claude       — writes .claude/settings.local.json
+  • Cursor       — writes .cursor/mcp.json
   • OpenCode     — writes opencode.json
   • Pi           — writes .pi/agent/models.json
   • Copilot      — writes .vscode/chatLanguageModels.json

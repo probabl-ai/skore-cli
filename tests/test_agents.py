@@ -37,7 +37,16 @@ def test_agent_names_match_registry():
 
 
 def test_harness_names_come_from_registry():
-    assert HARNESS_NAMES == ["claude", "codex", "opencode", "pi", "copilot"]
+    assert HARNESS_NAMES == [
+        "claude",
+        "cursor",
+        "codex",
+        "opencode",
+        "pi",
+        "copilot",
+        "bob",
+        "bob-ide",
+    ]
 
 
 def test_harness_rows_are_complete():
@@ -142,7 +151,8 @@ def test_harness_display_name_uses_label():
     assert AGENTS["agents"].harness_display_name == "Agents"
 
 
-def test_harness_registry_helpers(monkeypatch):
+def test_harness_registry_helpers(monkeypatch, tmp_path):
+    monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
     monkeypatch.setattr(
         _agents.shutil,
         "which",
