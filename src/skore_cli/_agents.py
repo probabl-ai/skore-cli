@@ -21,6 +21,11 @@ SKORE_PROVIDER_KEY = "skore"
 # OpenCode
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
 OPENCODE_SESSION_PLUGIN = ".opencode/plugins/skore-session.js"
+# Context window only: a single rate card would be wrong for the skore-agent facade.
+OPENCODE_MODEL = {
+    "name": "Skore Agent",
+    "limit": {"context": 200_000, "output": 8192},
+}
 OPENCODE_SESSION_PLUGIN_SOURCE = """\
 export const SkoreSessionPlugin = async () => ({
   "chat.headers": async (input, output) => {
@@ -124,7 +129,7 @@ def _configure_opencode(ctx: HarnessContext) -> dict[str, Any]:
                     "baseURL": ctx.base_url,
                     "apiKey": ctx.api_key,
                 },
-                "models": {ctx.model_id: {"name": "Skore Agent"}},
+                "models": {ctx.model_id: dict(OPENCODE_MODEL)},
             }
         },
     }
