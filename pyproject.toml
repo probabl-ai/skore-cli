@@ -34,7 +34,7 @@ dependencies = [
   "textual",
   # The `agent` command reuses skore's authentication machinery and calls the
   # hub identity API directly with httpx.
-  "skore[hub]",
+  "skore[hub]>=0.24.0",
   "httpx",
 ]
 

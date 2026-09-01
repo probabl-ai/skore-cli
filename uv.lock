@@ -173,6 +173,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudpickle"
+version = "3.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f0114a8d9fa1215425441bb35627b1993e5afd8111e5/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414", size = 22330, upload-time = "2025-11-03T09:25:26.604Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -378,15 +387,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/60/8b/32f9823da46cde7df2087faa08cd98d01b908f8dcab982cdba9c84e85355/decorator-5.3.1.tar.gz", hash = "sha256:4cbcdd55a6efadb9dbea26b858f4fb3264567b52d69ca0d25b721b553f60ea82", size = 58084, upload-time = "2026-05-18T06:03:28.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/05/7f/798705f5296a58ca505d600456748d1be48078eac8a7050d8a98bc9edb89/decorator-5.3.1-py3-none-any.whl", hash = "sha256:f47fe6fdbd2edd623ecfe36875d37aba411624e2670dd395dddae1358689bb3c", size = 10365, upload-time = "2026-05-18T06:03:26.517Z" },
-]
-
-[[package]]
-name = "diskcache"
-version = "5.6.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3f/21/1c1ffc1a039ddcc459db43cc108658f32c57d271d7289a2794e401d0fdb6/diskcache-5.6.3.tar.gz", hash = "sha256:2c3a3fa2743d8535d832ec61c2054a1641f41775aa7c556758a109941e33e4fc", size = 67916, upload-time = "2023-08-31T06:12:00.316Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3f/27/4570e78fc0bf5ea0ca45eb1de3818a23787af9b390c0b0a0033a1b8236f9/diskcache-5.6.3-py3-none-any.whl", hash = "sha256:5e31b2d5fbad117cc363ebaf6b689474db18a1f6438bc82358b024abd4c2ca19", size = 45550, upload-time = "2023-08-31T06:11:58.822Z" },
 ]
 
 [[package]]
@@ -2012,27 +2012,27 @@ wheels = [
 
 [[package]]
 name = "skore"
-version = "0.22.0"
+version = "0.25.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "diskcache" },
     { name = "jinja2" },
     { name = "joblib" },
     { name = "matplotlib" },
     { name = "narwhals" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "packaging" },
     { name = "pandas" },
-    { name = "platformdirs" },
     { name = "plotly" },
     { name = "rich" },
     { name = "scikit-learn" },
     { name = "seaborn" },
     { name = "skrub" },
+    { name = "uuid6", marker = "python_full_version < '3.14'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/29/2b/365635fcf0bdd50f1913b34bd0968c7a189e1e75297bd1c35456b6e1bbba/skore-0.22.0.tar.gz", hash = "sha256:1601c9ef05a9ee48bcc1473c99fb8ca42242e332df2e155e8ecf4a17cb13e5e3", size = 242674, upload-time = "2026-06-23T13:41:19.727Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8e/84/d533bc476ddf956b86e5c58bfddb145597fd017113b542abb85574760cff/skore-0.25.0.tar.gz", hash = "sha256:17768c2334c68610fd72a02c224c2bf618d075e7f8ba0b69aca09233495f909b", size = 260823, upload-time = "2026-08-19T08:56:02.447Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/73/f55c8481df3439378a93ff096c17ca3e098e72513f1cc1a696fed89d2f76/skore-0.22.0-py3-none-any.whl", hash = "sha256:0bc275ff07032a84dfc68714dd4ce9d8ad8fd88c60b78aa78a1df3c5f66344eb", size = 325269, upload-time = "2026-06-23T13:41:18.112Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/6f/b9f0aa46c92daec2057ac52353e257ef8dae1fb88f1fcc8bb3fa4b47ec09/skore-0.25.0-py3-none-any.whl", hash = "sha256:8bb84494836c4d7e3e22822ca14582a09fcc001765ef3e49727bb784cf2799b0", size = 345346, upload-time = "2026-08-19T08:56:00.642Z" },
 ]
 
 [package.optional-dependencies]
@@ -2047,7 +2047,7 @@ hub = [
 
 [[package]]
 name = "skore-cli"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -2083,7 +2083,7 @@ requires-dist = [
     { name = "pytest-xdist", marker = "extra == 'test'" },
     { name = "rich", specifier = ">=14.2" },
     { name = "rich-click", specifier = ">=1.9" },
-    { name = "skore", extras = ["hub"] },
+    { name = "skore", extras = ["hub"], specifier = ">=0.24.0" },
     { name = "textual" },
     { name = "xdoctest", marker = "extra == 'test'" },
 ]
@@ -2091,10 +2091,12 @@ provides-extras = ["test"]
 
 [[package]]
 name = "skrub"
-version = "0.9.0"
+version = "0.10.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "cloudpickle" },
     { name = "jinja2" },
+    { name = "joblib" },
     { name = "matplotlib" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -2105,9 +2107,9 @@ dependencies = [
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9b/69/2aa879d1aa7e697109860c2346efe8164531fa270fafa4ce1d22843157a2/skrub-0.9.0.tar.gz", hash = "sha256:c294f148ddf5dc1b3792c815fb9ea708338af6bda8eb47cfe04054bbb4a3b757", size = 3653206, upload-time = "2026-05-06T12:49:15.558Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a3/a6/f4d0b7240ebf546d3a77f212958b930282cccb0a53d66b9b0e1639ce8230/skrub-0.10.1.tar.gz", hash = "sha256:39f58492f6889c5563a654478cd523771aaa8dab5a42ad2ce9f430efb3881f53", size = 4205317, upload-time = "2026-09-01T09:33:37.146Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/39/6cc76da6f09aeb079d45b66bd36fbd9a9dd5425ded656f4fff2d2b30c5b6/skrub-0.9.0-py3-none-any.whl", hash = "sha256:d8a3e6526cd4c5c001a512a77927a9a7652896e11800ceacacca6d8cacd52e82", size = 537407, upload-time = "2026-05-06T12:49:13.612Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/2d/492a8b0d0d8b344918312a6416c537e54081ca5d0aaf19d085a188905e41/skrub-0.10.1-py3-none-any.whl", hash = "sha256:553c6f9b19a2cb97bba776a28255e7e024e77d4f50d7c6c70b4805f4e668a3cc", size = 595919, upload-time = "2026-09-01T09:33:35.208Z" },
 ]
 
 [[package]]
@@ -2259,6 +2261,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
+]
+
+[[package]]
+name = "uuid6"
+version = "2025.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/b7/4c0f736ca824b3a25b15e8213d1bcfc15f8ac2ae48d1b445b310892dc4da/uuid6-2025.0.1.tar.gz", hash = "sha256:cd0af94fa428675a44e32c5319ec5a3485225ba2179eefcf4c3f205ae30a81bd", size = 13932, upload-time = "2025-07-04T18:30:35.186Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3d/b2/93faaab7962e2aa8d6e174afb6f76be2ca0ce89fde14d3af835acebcaa59/uuid6-2025.0.1-py3-none-any.whl", hash = "sha256:80530ce4d02a93cdf82e7122ca0da3ebbbc269790ec1cb902481fa3e9cc9ff99", size = 6979, upload-time = "2025-07-04T18:30:34.001Z" },
 ]
 
 [[package]]

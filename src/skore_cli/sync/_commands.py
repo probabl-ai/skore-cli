@@ -41,11 +41,8 @@ def _endpoint_options(
 ) -> dict[str, Any]:
     """Validate one endpoint's mode-specific options."""
     workspace_option = f"--{prefix}-workspace"
-    tracking_option = f"--{prefix}-tracking-uri"
 
     if mode == "local":
-        if tracking_uri is not None:
-            raise click.UsageError(f"{tracking_option} is only valid for MLflow.")
         return (
             {}
             if workspace is None
@@ -55,8 +52,6 @@ def _endpoint_options(
     if mode == "hub":
         if workspace is None:
             raise click.UsageError(f"{workspace_option} is required for Hub.")
-        if tracking_uri is not None:
-            raise click.UsageError(f"{tracking_option} is only valid for MLflow.")
         return {"workspace": workspace}
 
     if workspace is not None:
@@ -78,11 +73,10 @@ def _render_result(result, *, dry_run: bool) -> None:
 @click.argument("source_project")
 @click.option("--from", "from_mode", type=click.Choice(MODES), default=None)
 @click.option("--from-workspace")
-@click.option("--from-tracking-uri")
 @click.option("--to", "to_mode", type=click.Choice(MODES), default=None)
 @click.option("--to-project", default=None)
 @click.option("--to-workspace")
-@click.option("--to-tracking-uri")
+@click.option("--tracking-uri")
 @click.option(
     "--hub-url",
     default=None,
@@ -99,11 +93,10 @@ def sync(
     source_project: str,
     from_mode: str | None,
     from_workspace: str | None,
-    from_tracking_uri: str | None,
     to_mode: str | None,
     to_project: str | None,
     to_workspace: str | None,
-    to_tracking_uri: str | None,
+    tracking_uri: str | None,
     hub_url: str | None,
     both: bool,
     dry_run: bool,
@@ -116,29 +109,21 @@ def sync(
     destination_mode = to_mode or "local"
     destination_project = to_project or source_project
 
-    if source_mode == destination_mode == "mlflow":
-        if from_tracking_uri is None:
-            from_tracking_uri = to_tracking_uri
-        if to_tracking_uri is None:
-            to_tracking_uri = from_tracking_uri
+    if tracking_uri is not None and "mlflow" not in (source_mode, destination_mode):
+        raise click.UsageError("--tracking-uri requires an MLflow endpoint.")
 
     source_options = _endpoint_options(
         source_mode,
         workspace=from_workspace,
-        tracking_uri=from_tracking_uri,
+        tracking_uri=tracking_uri,
         prefix="from",
     )
     destination_options = _endpoint_options(
         destination_mode,
         workspace=to_workspace,
-        tracking_uri=to_tracking_uri,
+        tracking_uri=tracking_uri,
         prefix="to",
     )
-    if (
-        source_mode == destination_mode == "mlflow"
-        and source_options != destination_options
-    ):
-        raise click.UsageError("MLflow synchronization requires the same tracking URI.")
     if (
         source_mode == destination_mode
         and source_project == destination_project

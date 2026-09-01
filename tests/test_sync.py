@@ -95,28 +95,7 @@ def test_sync_defaults_destination_to_local_with_custom_name(projects):
     ]
 
 
-def test_sync_reuses_one_mlflow_tracking_uri(projects):
-    created, _ = projects
-
-    result = CliRunner().invoke(
-        sync,
-        [
-            "source",
-            "--from=mlflow",
-            "--from-tracking-uri=http://mlflow.test",
-            "--to=mlflow",
-            "--to-project=destination",
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    assert [project.tracking_uri for project in created] == [
-        "http://mlflow.test",
-        "http://mlflow.test",
-    ]
-
-
-def test_sync_reuses_destination_mlflow_tracking_uri(projects):
+def test_sync_uses_one_mlflow_tracking_uri(projects):
     created, _ = projects
 
     result = CliRunner().invoke(
@@ -126,7 +105,7 @@ def test_sync_reuses_destination_mlflow_tracking_uri(projects):
             "--from=mlflow",
             "--to=mlflow",
             "--to-project=destination",
-            "--to-tracking-uri=http://mlflow.test",
+            "--tracking-uri=http://mlflow.test",
         ],
     )
 
@@ -151,17 +130,8 @@ def test_sync_reuses_destination_mlflow_tracking_uri(projects):
             "--hub-url requires a Hub endpoint",
         ),
         (
-            ["experiment", "--from=local", "--from-tracking-uri=http://mlflow.test"],
-            "--from-tracking-uri is only valid for MLflow",
-        ),
-        (
-            [
-                "experiment",
-                "--to=hub",
-                "--to-workspace=team",
-                "--to-tracking-uri=http://mlflow.test",
-            ],
-            "--to-tracking-uri is only valid for MLflow",
+            ["experiment", "--from=local", "--tracking-uri=http://mlflow.test"],
+            "--tracking-uri requires an MLflow endpoint",
         ),
     ],
 )
@@ -172,30 +142,43 @@ def test_sync_validates_options(args, message):
     assert message in _plain_output(result.output)
 
 
-@pytest.mark.parametrize(
-    ("args", "message"),
-    [
-        (["experiment", "--from=local", "--to=local"], "same project"),
-        (
-            [
-                "experiment",
-                "--from=mlflow",
-                "--from-tracking-uri=http://left",
-                "--to=mlflow",
-                "--to-tracking-uri=http://right",
-            ],
-            "same tracking URI",
-        ),
-    ],
-)
-def test_sync_rejects_invalid_endpoints_before_construction(projects, args, message):
+def test_sync_rejects_same_endpoint_before_construction(projects):
     created, _ = projects
 
-    result = CliRunner().invoke(sync, args)
+    result = CliRunner().invoke(sync, ["experiment", "--from=local", "--to=local"])
 
     assert result.exit_code == 2
-    assert message in _plain_output(result.output)
+    assert "same project" in _plain_output(result.output)
     assert created == []
+
+
+def test_sync_transfers_between_real_local_projects(tmp_path):
+    from sklearn.datasets import make_regression
+    from sklearn.linear_model import LinearRegression
+    from skore import Project, evaluate
+
+    source_workspace = tmp_path / "source"
+    destination_workspace = tmp_path / "destination"
+    X, y = make_regression(n_samples=20, n_features=2, random_state=0)
+    source = Project("source", mode="local", workspace=source_workspace)
+    source.put("model", evaluate(LinearRegression(), X, y, splitter=0.2))
+
+    result = CliRunner().invoke(
+        sync,
+        [
+            "source",
+            "--from=local",
+            f"--from-workspace={source_workspace}",
+            "--to=local",
+            "--to-project=destination",
+            f"--to-workspace={destination_workspace}",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "transferred" in result.output
+    destination = Project("destination", mode="local", workspace=destination_workspace)
+    assert destination.summarize().frame()["key"].tolist() == ["model"]
 
 
 def test_sync_requires_hub_api_key():

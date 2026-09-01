@@ -69,7 +69,7 @@ SKORE_HUB_API_KEY=... skore sync production \
   --from=hub --from-workspace=team --to-project=downloaded
 
 # Local -> MLflow
-skore sync experiment --to=mlflow --to-tracking-uri=http://localhost:5000
+skore sync experiment --to=mlflow --tracking-uri=http://localhost:5000
 ```
 
 Hub synchronization requires `SKORE_HUB_API_KEY`. Use `--hub-url` to target a custom
