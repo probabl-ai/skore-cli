@@ -17,18 +17,10 @@ DEFAULT_MODEL_ID = "skore-agent"
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
 OPENCODE_PROVIDER_KEY = "skore"
 OPENCODE_SESSION_PLUGIN = ".opencode/plugins/skore-session.js"
-# $/MTok, Claude Sonnet 5 (hub normal tier). OpenCode and Pi price locally
-# because ``skore-agent`` is not in models.dev; they use different key spellings.
-SONNET_5_COST_PER_MTOK = {
-    "input": 3.0,
-    "output": 15.0,
-    "cache_read": 0.3,
-    "cache_write": 3.75,
-}
+# Context window only: a single rate card would be wrong for the skore-agent facade.
 OPENCODE_MODEL = {
     "name": "Skore Agent",
     "limit": {"context": 200_000, "output": 8192},
-    "cost": dict(SONNET_5_COST_PER_MTOK),
 }
 OPENCODE_SESSION_PLUGIN_SOURCE = """\
 export const SkoreSessionPlugin = async () => ({
@@ -171,12 +163,6 @@ def _configure_pi(ctx: HarnessContext) -> dict[str, Any]:
                         "input": ["text"],
                         "contextWindow": 200000,
                         "maxTokens": 8192,
-                        "cost": {
-                            "input": SONNET_5_COST_PER_MTOK["input"],
-                            "output": SONNET_5_COST_PER_MTOK["output"],
-                            "cacheRead": SONNET_5_COST_PER_MTOK["cache_read"],
-                            "cacheWrite": SONNET_5_COST_PER_MTOK["cache_write"],
-                        },
                     }
                 ],
             }

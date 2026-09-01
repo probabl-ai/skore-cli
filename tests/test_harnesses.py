@@ -69,12 +69,7 @@ def test_opencode_config_matches_hub_ui(tmp_path):
     model = config["provider"]["skore"]["models"]["skore-agent"]
     assert model["name"] == "Skore Agent"
     assert model["limit"] == {"context": 200000, "output": 8192}
-    assert model["cost"] == {
-        "input": 3.0,
-        "output": 15.0,
-        "cache_read": 0.3,
-        "cache_write": 3.75,
-    }
+    assert "cost" not in model
 
 
 def test_opencode_writes_session_plugin(tmp_path):
@@ -94,12 +89,7 @@ def test_pi_config_matches_hub_ui(tmp_path):
     model = config["providers"]["skore"]["models"][0]
     assert model["id"] == "skore-agent"
     assert model["contextWindow"] == 200000
-    assert model["cost"] == {
-        "input": 3.0,
-        "output": 15.0,
-        "cacheRead": 0.3,
-        "cacheWrite": 3.75,
-    }
+    assert "cost" not in model
     compat = config["providers"]["skore"]["compat"]
     assert compat["sendSessionAffinityHeaders"] is True
     assert compat["sessionAffinityFormat"] == "openrouter"
