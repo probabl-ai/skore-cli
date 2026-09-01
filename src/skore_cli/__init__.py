@@ -19,11 +19,13 @@ from skore_cli._style import SKORE_BANNER, console
 # own `rich_click.COMMAND_GROUPS` entry, so import order does not matter.
 from skore_cli.agent import agent
 from skore_cli.skills import skills
+from skore_cli.sync import sync
 
 click.rich_click.COMMAND_GROUPS = {
     **getattr(click.rich_click, "COMMAND_GROUPS", {}),
     "cli": [
         {"name": "Agent", "commands": ["agent"]},
+        {"name": "Projects", "commands": ["sync"]},
         {"name": "Skills", "commands": ["skills"]},
     ],
 }
@@ -31,6 +33,7 @@ click.rich_click.COMMAND_GROUPS = {
 _COMMANDS = [
     ("agent", "Authenticate, configure and launch a Skore Hub agent harness."),
     ("skills", "Install and manage Agent Skills from the probabl-ai/skills release."),
+    ("sync", "Synchronize report projects across local storage, Skore Hub and MLflow."),
 ]
 
 
@@ -81,7 +84,11 @@ def _render_help(detected: Agent | None) -> str:
 @click.pass_context
 @click.version_option(package_name="skore-cli")
 def cli(ctx) -> None:
-    """Skore command-line interface."""
+    """Skore command-line interface.
+
+    Use ``skore agent`` to connect a project to the Skore Hub agent, ``skore sync``
+    to synchronize report projects, and ``skore skills`` to install probabl-skills.
+    """
     if ctx.invoked_subcommand is None:
         if is_non_interactive():
             click.echo(_render_help(detect_agent()))
@@ -92,6 +99,7 @@ def cli(ctx) -> None:
 
 cli.add_command(skills)
 cli.add_command(agent)
+cli.add_command(sync)
 
 # Commands contributed by other packages via the `skore_cli.plugins` entry-point
 # group. Kept for third-party extensibility; the built-in `agent` command no
