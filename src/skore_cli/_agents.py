@@ -246,6 +246,10 @@ def _configure_cursor(ctx: HarnessContext) -> dict[str, Any]:
     if not isinstance(servers, dict):
         servers = {}
     servers[SKORE_PROVIDER_KEY] = {
+        # Without an explicit transport Cursor probes streamable HTTP and, on
+        # any failure, retries the same URL as legacy SSE, which the hub does
+        # not serve: the real error is then buried under an SSE 404.
+        "type": "http",
         "url": ctx.mcp_url,
         # Written out rather than interpolated from the environment: Cursor
         # resolves ${env:...} against its own process, which is whatever

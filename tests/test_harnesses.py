@@ -153,6 +153,7 @@ def test_cursor_config_points_at_the_mcp_endpoint(tmp_path):
 
     config = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
     assert config["mcpServers"]["skore"] == {
+        "type": "http",
         "url": "http://hub.test/mcp",
         "headers": {"Authorization": "Bearer secret-key"},
     }
