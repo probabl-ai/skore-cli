@@ -17,6 +17,19 @@ DEFAULT_MODEL_ID = "skore-agent"
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
 OPENCODE_PROVIDER_KEY = "skore"
 OPENCODE_SESSION_PLUGIN = ".opencode/plugins/skore-session.js"
+# OpenCode computes % used from ``limit.context`` and $ spent from ``cost``
+# ($/MTok). ``skore-agent`` is not in models.dev, so these must be explicit.
+# Window matches Copilot/Pi; rates match Claude Sonnet 5 (the hub's normal tier).
+OPENCODE_MODEL = {
+    "name": "Skore Agent",
+    "limit": {"context": 200_000, "output": 8192},
+    "cost": {
+        "input": 3.0,
+        "output": 15.0,
+        "cache_read": 0.3,
+        "cache_write": 3.75,
+    },
+}
 OPENCODE_SESSION_PLUGIN_SOURCE = """\
 export const SkoreSessionPlugin = async () => ({
   "chat.headers": async (input, output) => {
@@ -96,7 +109,7 @@ def _configure_opencode(ctx: HarnessContext) -> dict[str, Any]:
                     "baseURL": ctx.base_url,
                     "apiKey": ctx.api_key,
                 },
-                "models": {ctx.model_id: {"name": "Skore Agent"}},
+                "models": {ctx.model_id: dict(OPENCODE_MODEL)},
             }
         },
     }

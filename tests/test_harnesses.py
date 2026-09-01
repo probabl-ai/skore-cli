@@ -66,7 +66,15 @@ def test_opencode_config_matches_hub_ui(tmp_path):
     assert config["$schema"] == "https://opencode.ai/config.json"
     assert config["model"] == "skore/skore-agent"
     assert config["provider"]["skore"]["name"] == "Skore Hub"
-    assert config["provider"]["skore"]["models"]["skore-agent"]["name"] == "Skore Agent"
+    model = config["provider"]["skore"]["models"]["skore-agent"]
+    assert model["name"] == "Skore Agent"
+    assert model["limit"] == {"context": 200000, "output": 8192}
+    assert model["cost"] == {
+        "input": 3.0,
+        "output": 15.0,
+        "cache_read": 0.3,
+        "cache_write": 3.75,
+    }
 
 
 def test_opencode_writes_session_plugin(tmp_path):
