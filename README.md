@@ -6,6 +6,15 @@
 [![Coverage](https://codecov.io/gh/probabl-ai/skore-cli/branch/main/graph/badge.svg)](https://codecov.io/gh/probabl-ai/skore-cli)
 [![License](https://img.shields.io/pypi/l/skore-cli)](https://github.com/probabl-ai/skore-cli/blob/main/LICENSE)
 
+
+```
+   _____ __ __ ____  ____  ______
+  / ___// //_// __ \/ __ \/ ____/
+  \__ \/ ,<  / / / / /_/ / __/
+ ___/ / /| |/ /_/ / _, _/ /___
+/____/_/ |_|\____/_/ |_/_____/
+```
+
 Command-line interface for [skore](https://github.com/probabl-ai/skore).
 
 `skore-cli` installs a single `skore` command with three areas:
