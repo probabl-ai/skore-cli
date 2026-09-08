@@ -232,6 +232,45 @@ def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     assert ".skore" in (tmp_path / ".gitignore").read_text().splitlines()
 
 
+def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(tmp_path, monkeypatch):
+    """Bob IDE on Linux installs a ``bobide`` binary on PATH (not ``bob-ide``);
+    the run must detect it and still write ``.bob/mcp.json`` after saving
+    ``.skore`` (skore-hub#1894)."""
+    monkeypatch.setattr(_agents.sys, "platform", "linux")
+    _mock_harness_on_path(monkeypatch, "bobide")
+    monkeypatch.setattr(
+        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
+    )
+    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands._client,
+        "me",
+        lambda hub_url, token: ("user-1", [_membership()]),
+    )
+    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
+    monkeypatch.setattr(
+        _commands._client,
+        "create_api_key",
+        lambda *a, **k: (42, "new-secret"),
+    )
+    monkeypatch.setattr(
+        _commands,
+        "launch_harness",
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+    )
+
+    result = CliRunner().invoke(
+        agent, ["--workspace", str(tmp_path), "--harness", "bob-ide"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "not installed or not on PATH" not in _plain_output(result.output)
+    saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert saved["api_key"] == "new-secret"
+    mcp = json.loads((tmp_path / ".bob" / "mcp.json").read_text())
+    assert mcp["mcpServers"]["skore"]["url"] == "http://hub.test/mcp"
+
+
 def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"

@@ -43,10 +43,11 @@ CURSOR_AUTORUN_INSTRUCTIONS = (
 )
 
 # Bob
-# On macOS, Bob IDE ships as an application bundle with no command on PATH.
-# On Windows it installs a ``bob-ide`` command; on Linux the .deb/.rpm package
-# does the same. The macOS bundle path is a module constant so tests can point
-# it somewhere that does not exist.
+# On macOS, Bob IDE ships as an application bundle with no command on PATH
+# (users can add ``bobide`` via the IDE's "Install 'bobide' command in PATH").
+# On Linux the .deb/.rpm package and on Windows the installer put a ``bobide``
+# command on PATH. The macOS bundle path is a module constant so tests can
+# point it somewhere that does not exist.
 BOB_IDE_APP_PATH = Path("/Applications/IBM Bob.app")
 
 # GitHub Copilot
@@ -529,7 +530,7 @@ def _launch_bob_ide(workspace: Path, _model_id: str) -> None:
     if sys.platform == "darwin":
         _exec_harness("open", ["open", "-a", str(BOB_IDE_APP_PATH), str(workspace)])
     else:
-        _exec_harness("bob-ide", ["bob-ide", str(workspace)])
+        _exec_harness("bobide", ["bobide", str(workspace)])
 
 
 def _launch_copilot(workspace: Path, _model_id: str) -> None:
@@ -723,7 +724,7 @@ AGENTS: dict[str, Agent] = {
         label="Bob IDE",
         harness_name="bob-ide",
         harness_label="Bob IDE",
-        harness_binaries=("bob-ide",),
+        harness_binaries=("bobide",),
         configure=_configure_bob_ide,
         launch=_launch_bob_ide,
     ),
