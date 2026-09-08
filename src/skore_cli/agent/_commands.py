@@ -178,19 +178,25 @@ def _resolve_membership(
     show_default=True,
     help="Seconds to wait for interactive device login.",
 )
+@click.option(
+    "--no-launch",
+    is_flag=True,
+    help="Write harness config and exit without launching the agent.",
+)
 def agent(
     workspace: Path,
     hub_url: str | None,
     harness_name: str | None,
     model_id: str,
     login_timeout: int,
+    no_launch: bool,
 ) -> None:
     """Authenticate, configure and launch a Skore Hub agent harness.
 
     On the first run, ``skore agent`` logs in to the hub (when needed), lets
     you pick a workspace and harness, creates a workspace API key, writes the
     harness config, and launches the agent. Later runs reuse ``.skore`` in the
-    project directory.
+    project directory. Pass ``--no-launch`` to stop after writing config.
 
     Supported harnesses: Bob Shell, Bob IDE, Claude, Cursor, OpenCode, Pi,
     GitHub Copilot and Codex (all must be on ``PATH``; on macOS, Bob IDE is found
@@ -296,7 +302,7 @@ def agent(
         )
     )
     detected = detect_agent()
-    if detected and detected.harness_name == harness_name:
+    if no_launch or (detected and detected.harness_name == harness_name):
         console.print(
             f"[skore.ok]+[/] {harness.harness_display_name} configured with the "
             f"Skore Hub provider. Restart {harness.harness_display_name} or start "

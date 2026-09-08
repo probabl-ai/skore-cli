@@ -76,7 +76,8 @@ platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 skore-cli = { path = ".", editable = true }
 
 [tool.pixi.feature.test.tasks]
-tests = "pytest tests --cov=skore_cli --cov-report=xml"
+tests = "pytest tests --cov=skore_cli --cov-report=xml -m 'not integration'"
+tests-integration = "pytest tests/integration -m integration -n 0"
 
 [tool.pixi.feature.lint.dependencies]
 pre-commit = "*"
@@ -118,6 +119,9 @@ addopts = [
 xfail_strict = true
 asyncio_mode = "auto"
 log_cli_level = "info"
+markers = [
+  "integration: tests that require real harness binaries on PATH",
+]
 
 [tool.coverage.run]
 branch = true

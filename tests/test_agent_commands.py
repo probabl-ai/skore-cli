@@ -193,6 +193,28 @@ def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):
     assert json.loads((tmp_path / "opencode.json").read_text())["provider"]["skore"]
 
 
+def test_agent_no_launch_skips_launch_after_configure(tmp_path, monkeypatch):
+    _write_skore(tmp_path)
+    _mock_harness_on_path(monkeypatch, "opencode")
+    launched: list[str] = []
+    monkeypatch.setattr(
+        _commands,
+        "launch_harness",
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: launched.append(
+            selected.harness_name
+        ),
+    )
+
+    result = CliRunner().invoke(
+        agent,
+        ["--workspace", str(tmp_path), "--harness", "opencode", "--no-launch"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert launched == []
+    assert json.loads((tmp_path / "opencode.json").read_text())["provider"]["skore"]
+
+
 def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     _mock_harness_on_path(monkeypatch, "opencode")
     monkeypatch.setattr(
