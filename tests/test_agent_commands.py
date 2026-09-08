@@ -232,10 +232,14 @@ def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     assert ".skore" in (tmp_path / ".gitignore").read_text().splitlines()
 
 
-def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(tmp_path, monkeypatch):
+@pytest.mark.parametrize("harness_flag", ["bob-ide", "bobide"])
+def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(
+    tmp_path, monkeypatch, harness_flag
+):
     """Bob IDE on Linux installs a ``bobide`` binary on PATH (not ``bob-ide``);
     the run must detect it and still write ``.bob/mcp.json`` after saving
-    ``.skore`` (skore-hub#1894)."""
+    ``.skore`` (skore-hub#1894). ``--harness bobide`` is accepted as an alias
+    and stored under the canonical ``bob-ide`` name."""
     monkeypatch.setattr(_agents.sys, "platform", "linux")
     _mock_harness_on_path(monkeypatch, "bobide")
     monkeypatch.setattr(
@@ -260,13 +264,14 @@ def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(tmp_path, monkeypatc
     )
 
     result = CliRunner().invoke(
-        agent, ["--workspace", str(tmp_path), "--harness", "bob-ide"]
+        agent, ["--workspace", str(tmp_path), "--harness", harness_flag]
     )
 
     assert result.exit_code == 0, result.output
     assert "not installed or not on PATH" not in _plain_output(result.output)
     saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
     assert saved["api_key"] == "new-secret"
+    assert saved["harness"] == "bob-ide"
     mcp = json.loads((tmp_path / ".bob" / "mcp.json").read_text())
     assert mcp["mcpServers"]["skore"]["url"] == "http://hub.test/mcp"
 

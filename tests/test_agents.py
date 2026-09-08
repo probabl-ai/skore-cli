@@ -7,6 +7,7 @@ from skore_cli import _agents
 from skore_cli._agents import (
     AGENTS,
     DEFAULT_AGENT,
+    HARNESS_CHOICES,
     HARNESS_NAMES,
     SKILL_AGENT_NAMES,
     Agent,
@@ -47,6 +48,14 @@ def test_harness_names_come_from_registry():
         "bob",
         "bob-ide",
     ]
+
+
+def test_harness_choices_include_canonical_names_and_aliases():
+    assert HARNESS_CHOICES[-1] == "bobide"
+    assert "bob-ide" in HARNESS_CHOICES
+    assert HARNESS_CHOICES.count("bob-ide") == 1
+    assert HARNESS_CHOICES.count("bobide") == 1
+    assert all(name in HARNESS_CHOICES for name in HARNESS_NAMES)
 
 
 def test_harness_rows_are_complete():
@@ -164,6 +173,7 @@ def test_harness_registry_helpers(monkeypatch, tmp_path):
         get_harness("missing")
     assert normalize_harness_name(None) is None
     assert normalize_harness_name("claude-code") == "claude"
+    assert normalize_harness_name("bobide") == "bob-ide"
     assert normalize_harness_name("unknown") == "unknown"
     assert is_harness_installed(AGENTS["opencode"])
     assert not is_harness_installed(AGENTS["claude-code"])

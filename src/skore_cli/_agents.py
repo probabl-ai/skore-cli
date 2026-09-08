@@ -99,6 +99,7 @@ class Agent:
     harness_name: str | None = None
     harness_label: str | None = None
     harness_binaries: tuple[str, ...] = ()
+    harness_aliases: tuple[str, ...] = ()
     configure: Configure | None = None
     launch: Launch | None = None
 
@@ -725,6 +726,7 @@ AGENTS: dict[str, Agent] = {
         harness_name="bob-ide",
         harness_label="Bob IDE",
         harness_binaries=("bobide",),
+        harness_aliases=("bobide",),
         configure=_configure_bob_ide,
         launch=_launch_bob_ide,
     ),
@@ -735,6 +737,15 @@ SKILL_AGENT_NAMES = [
 ]
 HARNESS_NAMES = [
     agent.harness_name for agent in AGENTS.values() if agent.harness_name is not None
+]
+# Canonical harness names plus their aliases (e.g. ``bobide`` for Bob IDE, the
+# command it installs). Accepted by ``--harness``; still stored as the canonical
+# name in ``.skore``.
+HARNESS_CHOICES = [
+    name
+    for agent in AGENTS.values()
+    if agent.harness_name is not None
+    for name in (agent.harness_name, *agent.harness_aliases)
 ]
 
 
@@ -809,7 +820,11 @@ def normalize_harness_name(name: str | None) -> str | None:
     if name is None:
         return None
     for agent in AGENTS.values():
-        if agent.harness_name and name in (agent.name, agent.harness_name):
+        if agent.harness_name and name in (
+            agent.name,
+            agent.harness_name,
+            *agent.harness_aliases,
+        ):
             return agent.harness_name
     return name
 

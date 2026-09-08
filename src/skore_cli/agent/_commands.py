@@ -8,6 +8,7 @@ import rich_click as click
 
 from skore_cli._agents import (
     DEFAULT_MODEL_ID,
+    HARNESS_CHOICES,
     HARNESS_NAMES,
     HarnessContext,
     detect_agent,
@@ -16,6 +17,7 @@ from skore_cli._agents import (
     is_harness_installed,
     is_non_interactive,
     launch_harness,
+    normalize_harness_name,
 )
 from skore_cli._hub_auth import ensure_login
 from skore_cli._skore import URI_ENV, resolve_hub_uri
@@ -160,7 +162,7 @@ def _resolve_membership(
     "--harness",
     "-H",
     "harness_name",
-    type=click.Choice(HARNESS_NAMES),
+    type=click.Choice(HARNESS_CHOICES),
     default=None,
     help="Harness to use non-interactively (omit to pick among installed ones).",
 )
@@ -192,8 +194,10 @@ def agent(
 
     Supported harnesses: Bob Shell, Bob IDE, Claude, Cursor, OpenCode, Pi,
     GitHub Copilot and Codex (all must be on ``PATH``; on macOS, Bob IDE is found
-    via its application bundle instead).
+    via its application bundle instead). Bob IDE also accepts ``--harness bobide``
+    (the command its installer puts on PATH); both names mean the same harness.
     """
+    harness_name = normalize_harness_name(harness_name)
     workspace = workspace.resolve()
     if not workspace.is_dir():
         raise click.ClickException(f"workspace does not exist: {workspace}")
