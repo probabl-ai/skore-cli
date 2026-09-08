@@ -125,7 +125,7 @@ def _resolve_membership(
             return memberships[0]
         if is_non_interactive():
             raise click.UsageError(
-                "pass a saved workspace in .skore or run interactively to pick one."
+                "multiple workspaces available; run interactively to pick one."
             )
         return _pick_workspace(memberships)
 
@@ -188,7 +188,9 @@ def agent(
     On the first run, ``skore agent`` logs in to the hub (when needed), lets
     you pick a workspace and harness, creates a workspace API key, writes the
     harness config, and launches the agent. Later runs reuse ``.skore`` in the
-    project directory.
+    project directory; passing ``--hub-url`` or ``--harness`` updates the
+    recorded values (a different ``--hub-url`` re-authenticates and mints a
+    fresh API key against that hub) instead of reusing the saved ones.
 
     Supported harnesses: Bob Shell, Bob IDE, Claude, Cursor, OpenCode, Pi,
     GitHub Copilot and Codex (all must be on ``PATH``; on macOS, Bob IDE is found
@@ -200,7 +202,15 @@ def agent(
 
     config = SkoreConfig.load(workspace)
 
-    if config is not None and config.api_key and config.workspace:
+    if (
+        config is not None
+        and config.api_key
+        and config.workspace
+        and (
+            hub_url is None
+            or resolve_hub_uri(hub_url, _auth) == resolve_hub_uri(config.hub_url, _auth)
+        )
+    ):
         resolved_hub_url = (
             resolve_hub_uri(hub_url, _auth) if hub_url is not None else config.hub_url
         )
@@ -214,10 +224,15 @@ def agent(
                 "you are not a member of any hub workspace; create or join one first."
             )
 
-        saved_workspace = config.workspace if config else None
+        # A saved workspace only makes sense on the same hub; a different
+        # --hub-url means memberships were re-fetched for a new hub.
+        saved_workspace = config.workspace if config and hub_url is None else None
         membership = _resolve_membership(memberships, saved_workspace)
 
-        if config is None or not config.api_key:
+        if config is not None and config.api_key and hub_url is None:
+            # Invalid/partial config for the same hub: keep the saved key.
+            api_key = config.api_key
+        else:
             if harness_name is None:
                 if is_non_interactive():
                     detected = detect_agent()
@@ -236,8 +251,6 @@ def agent(
             api_key = _create_workspace_api_key(
                 resolved_hub_url, token, user_id, membership, harness_name
             )
-        else:
-            api_key = config.api_key
 
         config = SkoreConfig(
             hub_url=resolved_hub_url,
