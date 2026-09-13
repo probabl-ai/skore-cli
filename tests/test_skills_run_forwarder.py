@@ -30,6 +30,18 @@ def test_skore_run_is_not_a_command() -> None:
     assert "run" not in cli.commands
 
 
+def test_skills_help_lists_run_under_runtime() -> None:
+    """``skore skills --help`` groups ``run`` as Runtime, not a root command."""
+    result = _invoke(["skills", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "run" in result.output
+    assert "Runtime" in result.output
+    root = _invoke(["--help"])
+    assert root.exit_code == 0
+    # Root help lists the skills *group*, not a top-level run command.
+    assert "  run " not in root.output.replace("skore skills run", "")
+
+
 def test_forwards_argv_to_skore_skills(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -66,12 +78,10 @@ def test_missing_module_message(
     assert "skore-skills is not installed" in result.output
 
 
-def test_pixi_dispatch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_pixi_dispatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A pixi.toml project is dispatched via ``pixi run python``."""
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "pixi.toml").write_text("[workspace]\nname = \"demo\"\n")
+    (tmp_path / "pixi.toml").write_text('[workspace]\nname = "demo"\n')
     monkeypatch.setattr(run_mod.shutil, "which", lambda name: "/usr/bin/pixi")
     calls: list[list[str]] = []
 
@@ -86,12 +96,10 @@ def test_pixi_dispatch(
     assert calls[1][:4] == ["/usr/bin/pixi", "run", "python", "-m"]
 
 
-def test_pixi_environment_flag(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_pixi_environment_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``PIXI_ENVIRONMENT`` is passed as ``pixi run -e``."""
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "pixi.toml").write_text("[workspace]\nname = \"demo\"\n")
+    (tmp_path / "pixi.toml").write_text('[workspace]\nname = "demo"\n')
     monkeypatch.setenv("PIXI_ENVIRONMENT", "agent")
     monkeypatch.setattr(run_mod.shutil, "which", lambda name: "/usr/bin/pixi")
     calls: list[list[str]] = []
@@ -106,13 +114,11 @@ def test_pixi_environment_flag(
     assert calls[0][:5] == ["/usr/bin/pixi", "run", "-e", "agent", "python"]
 
 
-def test_workspace_option(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_workspace_option(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``--workspace`` sets the project root used for pixi detection."""
     project = tmp_path / "proj"
     project.mkdir()
-    (project / "pixi.toml").write_text("[workspace]\nname = \"demo\"\n")
+    (project / "pixi.toml").write_text('[workspace]\nname = "demo"\n')
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(run_mod.shutil, "which", lambda name: "/usr/bin/pixi")
     cwds: list[Path] = []
