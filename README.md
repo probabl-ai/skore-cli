@@ -54,8 +54,9 @@ skore skills remove        # remove installed skills
 skore skills run status    # project methodology CLI (forwards to python -m skore_skills)
 ```
 
-`install` / `list` / `update` / `remove` manage the markdown catalog.
-`skore skills run …` is a runtime forwarder: it execs `python -m skore_skills`
+`install` / `list` / `update` / `remove` manage the markdown catalog
+(Discover / Manage in `skore skills --help`).
+`skore skills run …` is Runtime: it forwards to `python -m skore_skills`
 in the **project** interpreter (pixi when `pixi.toml` is present). It is not a
 catalog skill id. Until `skore-skills` is installed in that env, use
 `python -m skore_skills` directly.

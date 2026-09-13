@@ -30,6 +30,18 @@ def test_skore_run_is_not_a_command() -> None:
     assert "run" not in cli.commands
 
 
+def test_skills_help_lists_run_under_runtime() -> None:
+    """``skore skills --help`` groups ``run`` as Runtime, not a root command."""
+    result = _invoke(["skills", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "run" in result.output
+    assert "Runtime" in result.output
+    root = _invoke(["--help"])
+    assert root.exit_code == 0
+    # Root help lists the skills *group*, not a top-level run command.
+    assert "  run " not in root.output.replace("skore skills run", "")
+
+
 def test_forwards_argv_to_skore_skills(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

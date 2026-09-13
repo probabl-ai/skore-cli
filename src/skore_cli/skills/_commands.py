@@ -38,6 +38,7 @@ click.rich_click.COMMAND_GROUPS = {
     "cli skills": [
         {"name": "Discover", "commands": ["list"]},
         {"name": "Manage", "commands": ["install", "update", "remove"]},
+        {"name": "Runtime", "commands": ["run"]},
     ],
 }
 
