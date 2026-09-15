@@ -38,6 +38,7 @@ click.rich_click.COMMAND_GROUPS = {
     "cli skills": [
         {"name": "Discover", "commands": ["list"]},
         {"name": "Manage", "commands": ["install", "update", "remove"]},
+        {"name": "Runtime", "commands": ["run"]},
     ],
 }
 
@@ -483,6 +484,35 @@ def skills(ctx) -> None:
     """Install and manage Agent Skills from the probabl-ai/skills release."""
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
+
+
+@skills.command(
+    "run",
+    context_settings={
+        "ignore_unknown_options": True,
+        "allow_extra_args": True,
+        "help_option_names": [],
+    },
+)
+@click.option(
+    "--workspace",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Project directory (default: current working directory).",
+)
+@click.pass_context
+def skills_run(ctx: click.Context, workspace: Path | None) -> None:
+    """Forward remaining arguments to ``python -m skore_skills`` in the project env."""
+    from skore_cli.skills._run import MISSING_MODULE, MissingSkoreSkillsError, forward
+
+    root = Path.cwd() if workspace is None else workspace
+    extra = list(ctx.args)
+    try:
+        code = forward(root, extra)
+    except MissingSkoreSkillsError:
+        click.echo(MISSING_MODULE, err=True)
+        raise SystemExit(1) from None
+    raise SystemExit(code)
 
 
 @skills.command("install")
