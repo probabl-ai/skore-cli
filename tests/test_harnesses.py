@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tomllib
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -16,6 +17,7 @@ from skore_cli._agents import (
     installed_harnesses,
     is_harness_installed,
 )
+from skore_cli.hub import _commands as _hub_commands
 
 
 def _ctx(workspace, **kwargs):
@@ -507,10 +509,25 @@ def _write_skore_file(workspace, **overrides):
         "hub_url": "http://hub.test",
         "workspace": "acme",
         "workspace_id": 1,
-        "api_key": "secret-key",
     }
     payload.update(overrides)
     (workspace / ".skore").write_text(json.dumps(payload))
+
+
+@pytest.fixture(autouse=True)
+def stub_registry(monkeypatch):
+    """Serve the stored API key without touching the real credential registry."""
+    monkeypatch.setattr(
+        _hub_commands,
+        "_registry",
+        lambda: SimpleNamespace(
+            get=lambda *, host, workspace: (
+                "secret-key"
+                if (host, workspace) == ("http://hub.test", "acme")
+                else None
+            )
+        ),
+    )
 
 
 def test_launch_exports_sdk_credentials_from_skore_file(tmp_path, monkeypatch):
@@ -520,6 +537,20 @@ def test_launch_exports_sdk_credentials_from_skore_file(tmp_path, monkeypatch):
     _agents.launch_harness(AGENTS["claude-code"], tmp_path)
 
     assert captured["env"][_agents.SDK_API_KEY_ENV] == "secret-key"
+    assert captured["env"][_agents.SDK_URI_ENV] == "http://hub.test"
+
+
+def test_launch_exports_only_the_uri_without_a_stored_key(tmp_path, monkeypatch):
+    captured = _prepare_claude_launch(tmp_path, monkeypatch)
+    (tmp_path / ".skore").write_text(
+        json.dumps(
+            {"hub_url": "http://hub.test", "workspace": "other", "workspace_id": 2}
+        )
+    )
+
+    _agents.launch_harness(AGENTS["claude-code"], tmp_path)
+
+    assert _agents.SDK_API_KEY_ENV not in captured["env"]
     assert captured["env"][_agents.SDK_URI_ENV] == "http://hub.test"
 
 

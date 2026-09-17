@@ -3,17 +3,29 @@
 from __future__ import annotations
 
 import pytest
+import rich_click as click
 from click.testing import CliRunner
 from skore._plugins.hub.authentication.api_key import registry
 from skore._plugins.hub.authentication.uri import URI
 
 from skore_cli import cli
+from skore_cli.hub import _client
+from skore_cli.hub import _commands as _hub
+from skore_cli.hub._commands import PROJECT_PERMISSIONS
 
 pytestmark = pytest.mark.usefixtures("monkeypatch_home", "monkeypatch_keyring")
 
 
 def _invoke(args: list[str]):
     return CliRunner().invoke(cli, args)
+
+
+def _membership(public_id: str = "ws-1", workspace_id: int = 1):
+    return _client.Membership(
+        workspace_id=workspace_id,
+        public_id=public_id,
+        permissions=frozenset(PROJECT_PERMISSIONS),
+    )
 
 
 def test_hub_no_subcommand_shows_help():
@@ -27,6 +39,7 @@ def test_hub_api_key_no_subcommand_shows_help():
     result = _invoke(["hub", "api-key"])
 
     assert result.exit_code == 0
+    assert "generate" in result.output
     assert "add" in result.output
     assert "delete" in result.output
     assert "list" in result.output
@@ -114,3 +127,108 @@ def test_hub_api_key_list_shows_host_and_workspace():
     assert "w2" in result.output
     assert "k1" not in result.output
     assert "k2" not in result.output
+
+
+def test_resolve_api_key_name_deduplicates():
+    assert _hub._resolve_api_key_name("opencode", []) == "opencode"
+    assert _hub._resolve_api_key_name("opencode", ["opencode"]) == "opencode-2"
+    assert (
+        _hub._resolve_api_key_name("opencode", ["opencode", "opencode-2"])
+        == "opencode-3"
+    )
+
+
+def test_create_workspace_api_key_mints_secret(monkeypatch):
+    monkeypatch.setattr(_hub._client, "list_api_keys", lambda *a, **k: [])
+    captured = {}
+
+    def fake_create(hub_url, token, user_id, **kwargs):
+        captured.update(kwargs)
+        return 7, "the-secret"
+
+    monkeypatch.setattr(_hub._client, "create_api_key", fake_create)
+
+    secret = _hub._create_workspace_api_key(
+        "http://hub.test", "tok", "user-1", _membership(), "opencode"
+    )
+
+    assert secret == "the-secret"
+    assert captured["name"] == "opencode"
+    assert set(captured["permissions"]) == set(PROJECT_PERMISSIONS)
+
+
+def test_create_workspace_api_key_requires_permissions():
+    membership = _client.Membership(
+        workspace_id=1, public_id="ws-1", permissions=frozenset()
+    )
+    with pytest.raises(click.ClickException, match="cannot create project API keys"):
+        _hub._create_workspace_api_key(
+            "http://hub.test", "tok", "user-1", membership, "opencode"
+        )
+
+
+def test_create_workspace_api_key_dedupes_name_within_workspace(monkeypatch):
+    existing = [
+        _client.ApiKeyInfo(
+            id=1,
+            name="opencode",
+            workspace_id=1,
+            created_at=None,
+            expires_at=None,
+        )
+    ]
+    monkeypatch.setattr(_hub._client, "list_api_keys", lambda *a, **k: existing)
+    captured = {}
+
+    def fake_create(hub_url, token, user_id, **kwargs):
+        captured.update(kwargs)
+        return 2, "secret"
+
+    monkeypatch.setattr(_hub._client, "create_api_key", fake_create)
+
+    _hub._create_workspace_api_key(
+        "http://hub.test", "tok", "user-1", _membership(), "opencode"
+    )
+
+    assert captured["name"] == "opencode-2"
+
+
+def test_hub_api_key_generate_requires_workspace():
+    result = _invoke(["hub", "api-key", "generate"])
+
+    assert result.exit_code != 0
+    assert "workspace" in result.output.lower()
+
+
+def test_hub_api_key_generate_stores_key(monkeypatch):
+    monkeypatch.setattr(
+        _hub, "resolve_hub_uri", lambda host, *a, **k: "http://hub.test"
+    )
+    monkeypatch.setattr(_hub, "ensure_login", lambda *, timeout: "tok")
+    monkeypatch.setattr(
+        _hub._client, "me", lambda hub_url, token: ("user-1", [_membership("team")])
+    )
+    monkeypatch.setattr(_hub._client, "list_api_keys", lambda *a, **k: [])
+    monkeypatch.setattr(
+        _hub._client, "create_api_key", lambda *a, **k: (42, "minted-secret")
+    )
+
+    result = _invoke(["hub", "api-key", "generate", "--workspace=team"])
+
+    assert result.exit_code == 0, result.output
+    assert registry.get(host="http://hub.test", workspace="team") == "minted-secret"
+
+
+def test_hub_api_key_generate_unknown_workspace(monkeypatch):
+    monkeypatch.setattr(
+        _hub, "resolve_hub_uri", lambda host, *a, **k: "http://hub.test"
+    )
+    monkeypatch.setattr(_hub, "ensure_login", lambda *, timeout: "tok")
+    monkeypatch.setattr(
+        _hub._client, "me", lambda hub_url, token: ("user-1", [_membership("team")])
+    )
+
+    result = _invoke(["hub", "api-key", "generate", "--workspace=other"])
+
+    assert result.exit_code != 0
+    assert "not in your memberships" in result.output

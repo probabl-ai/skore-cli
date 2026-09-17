@@ -1,4 +1,4 @@
-"""Tests for the thin hub HTTP client backing ``skore agent``."""
+"""Tests for the thin hub HTTP client backing ``skore hub``."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import httpx
 import pytest
 import rich_click as click
 
-from skore_cli.agent import _client
-from skore_cli.agent._client import ApiKeyInfo, Membership
+from skore_cli.hub import _client
+from skore_cli.hub._client import ApiKeyInfo, Membership
 
 
 def _transport(handler):

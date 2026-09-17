@@ -1,10 +1,9 @@
-"""Thin HTTP client for the hub API used by the ``skore agent`` command.
+"""Thin HTTP client for the hub identity API.
 
-Pure, testable functions over the hub's ``/identity`` endpoints, limited to what
-``skore agent`` needs: reading the user's profile and minting a workspace-scoped
-API key. ``httpx`` is imported lazily inside the calls so building the CLI stays
-cheap. All calls authenticate with the stored interactive login token as a
-bearer.
+Pure, testable functions over the hub's ``/identity`` endpoints: reading the
+user's profile and minting a workspace-scoped API key. ``httpx`` is imported
+lazily inside the calls so building the CLI stays cheap. All calls authenticate
+with the stored interactive login token as a bearer.
 """
 
 from __future__ import annotations

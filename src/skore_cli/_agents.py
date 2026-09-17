@@ -621,11 +621,14 @@ def _export_sdk_credentials(workspace: Path) -> None:
     user's own key or hub keeps precedence.
     """
     from skore_cli.agent._skore_file import SkoreConfig
+    from skore_cli.hub._commands import _registry
 
     config = SkoreConfig.load(workspace)
     if config is None:
         return
-    os.environ.setdefault(SDK_API_KEY_ENV, config.api_key)
+    api_key = _registry().get(host=config.hub_url, workspace=config.workspace)
+    if api_key:
+        os.environ.setdefault(SDK_API_KEY_ENV, api_key)
     os.environ.setdefault(SDK_URI_ENV, config.hub_url)
 
 
