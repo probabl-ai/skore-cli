@@ -8,12 +8,13 @@
 
 Command-line interface for [skore](https://github.com/probabl-ai/skore).
 
-`skore-cli` installs a single `skore` command with three areas:
+`skore-cli` installs a single `skore` command with four areas:
 
 - **skills** — discover, install and manage [Agent Skills](https://agentskills.io)
   from the [probabl-ai/skills](https://github.com/probabl-ai/skills) catalog
 - **agent** — connect a project to the Skore Hub agent, write harness config
   and launch a local coding agent
+- **hub** — manage locally stored Skore Hub API keys
 - **sync** — synchronize report projects across local storage, Skore Hub, and MLflow
 
 ## Installation
@@ -74,6 +75,21 @@ environment are left untouched.
 skore agent
 skore agent --harness claude    # non-interactive harness choice
 skore agent --workspace ./myapp # configure another project directory
+```
+
+### Hub
+
+Store and inspect Hub API keys locally via skore's credential registry
+(`~/.skore.hub/credentials.json`). `--host` selects a non-default hub (omit it
+to use `SKORE_HUB_URI` or the public hub); `--workspace` is required when
+adding or deleting a key.
+
+```bash
+skore hub api-key add <key> --workspace=<workspace>
+skore hub api-key add <key> --host=<host> --workspace=<workspace>
+skore hub api-key delete --workspace=<workspace>
+skore hub api-key delete --host=<host> --workspace=<workspace>
+skore hub api-key list
 ```
 
 ### Sync
