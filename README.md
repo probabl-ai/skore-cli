@@ -14,7 +14,7 @@ Command-line interface for [skore](https://github.com/probabl-ai/skore).
   from the [probabl-ai/skills](https://github.com/probabl-ai/skills) catalog
 - **agent** — connect a project to the Skore Hub agent, write harness config
   and launch a local coding agent
-- **hub** — manage locally stored Skore Hub API keys
+- **hub** — generate, store and inspect Skore Hub API keys
 - **sync** — synchronize report projects across local storage, Skore Hub, and MLflow
 
 ## Installation
@@ -57,19 +57,22 @@ skore skills remove        # remove installed skills
 ### Agent
 
 On the first run, `skore agent` logs in when needed, lets you pick a workspace
-and harness, creates a workspace API key, writes the harness configuration and
-launches the agent. Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude**,
+and harness, and saves the workspace and hub URI to `.skore` in the project
+directory (gitignored). The API key is not stored there: it comes from the
+credential registry, and `skore agent` runs `skore hub api-key generate
+--host=<host> --workspace=<workspace>` for you when no key is stored yet.
+
+Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude**,
 **Cursor**, **OpenCode**, **Pi**, **GitHub Copilot** and **Codex** (all must be on
 `PATH`; on macOS, Bob IDE is found via its application bundle). Bob IDE also
 accepts `--harness bobide` — the name of the command its installer puts on
-`PATH` — as an alias for `--harness bob-ide`. Later runs reuse
-`.skore` in the project directory (gitignored). Use `SKORE_HUB_URI` (or
+`PATH` — as an alias for `--harness bob-ide`. Use `SKORE_HUB_URI` (or
 `--hub-url`) to point at a non-default hub.
 
-Launching a harness exports the `.skore` credentials as `SKORE_HUB_API_KEY` and
-`SKORE_HUB_URI`, so `skore.login()` in the scripts the agent runs authenticates
-with that key instead of opening a browser. Values already set in your
-environment are left untouched.
+Launching a harness exports the workspace credentials as `SKORE_HUB_API_KEY`
+and `SKORE_HUB_URI`, so `skore.login()` in the scripts the agent runs
+authenticates with that key instead of opening a browser. Values already set in
+your environment are left untouched.
 
 ```bash
 skore agent
@@ -82,9 +85,11 @@ skore agent --workspace ./myapp # configure another project directory
 Store and inspect Hub API keys locally via skore's credential registry
 (`~/.skore.hub/credentials.json`). `--host` selects a non-default hub (omit it
 to use `SKORE_HUB_URI` or the public hub); `--workspace` is required when
-adding or deleting a key.
+generating, adding or deleting a key.
 
 ```bash
+skore hub api-key generate --workspace=<workspace>
+skore hub api-key generate --host=<host> --workspace=<workspace>
 skore hub api-key add <key> --workspace=<workspace>
 skore hub api-key add <key> --host=<host> --workspace=<workspace>
 skore hub api-key delete --workspace=<workspace>

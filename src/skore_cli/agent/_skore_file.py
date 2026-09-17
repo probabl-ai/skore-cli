@@ -18,7 +18,6 @@ class SkoreConfig:
     hub_url: str
     workspace: str
     workspace_id: int
-    api_key: str
     harness: str | None = None
 
     @classmethod
@@ -34,15 +33,13 @@ class SkoreConfig:
         hub_url = data.get("hub_url")
         workspace = data.get("workspace")
         workspace_id = data.get("workspace_id")
-        api_key = data.get("api_key")
-        if not hub_url or not workspace or workspace_id is None or not api_key:
+        if not hub_url or not workspace or workspace_id is None:
             return None
         harness = normalize_harness_name(data.get("harness"))
         return cls(
             hub_url=hub_url,
             workspace=workspace,
             workspace_id=int(workspace_id),
-            api_key=api_key,
             harness=harness,
         )
 
