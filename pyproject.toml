@@ -173,6 +173,8 @@ module = [
   "textual.*",
   "httpx",
   "httpx.*",
+  "skore",
+  "skore.*",
 ]
 
 [tool.ty.environment]

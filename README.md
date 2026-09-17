@@ -69,10 +69,9 @@ accepts `--harness bobide` — the name of the command its installer puts on
 `PATH` — as an alias for `--harness bob-ide`. Use `SKORE_HUB_URI` (or
 `--hub-url`) to point at a non-default hub.
 
-Launching a harness exports the workspace credentials as `SKORE_HUB_API_KEY`
-and `SKORE_HUB_URI`, so `skore.login()` in the scripts the agent runs
-authenticates with that key instead of opening a browser. Values already set in
-your environment are left untouched.
+Reading `.skore` sets `SKORE_HUB_URI` so the `skore` package talks to the same
+hub. The workspace API key stays in the credential registry and is picked up
+automatically. `--hub-url` / `--host` override the URI for that process.
 
 ```bash
 skore agent

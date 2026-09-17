@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import rich_click as click
 
 import skore_cli._style  # noqa: F401  (applies the CLI palette and rich-click config)
@@ -110,3 +112,14 @@ cli.add_command(sync)
 # group. Kept for third-party extensibility; the built-in `agent` command no
 # longer goes through it so the CLI never imports `skore` just to show help.
 load_plugins(cli)
+
+# Ensure ``skore`` is available without importing it explicitly
+try:
+    importlib.util.find_spec("skore", package=None)
+except ModuleNotFoundError:
+    message = (
+        "this command needs the `skore` package (install it with `pip install "
+        "skore-cli` or `pip install skore`)."
+    )
+
+    raise click.ClickException(message) from None

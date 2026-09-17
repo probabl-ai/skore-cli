@@ -179,7 +179,5 @@ def monkeypatch_keyring(monkeypatch):
 @pytest.fixture(autouse=True)
 def monkeypatch_sdk_env(monkeypatch):
     """Unset the SDK credential variables."""
-    from skore_cli._agents import SDK_API_KEY_ENV, SDK_URI_ENV
-
-    monkeypatch.delenv(SDK_API_KEY_ENV, raising=False)
-    monkeypatch.delenv(SDK_URI_ENV, raising=False)
+    monkeypatch.delenv("SKORE_HUB_API_KEY", raising=False)
+    monkeypatch.delenv("SKORE_HUB_URI", raising=False)

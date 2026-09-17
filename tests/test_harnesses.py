@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
 import tomllib
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -17,7 +15,6 @@ from skore_cli._agents import (
     installed_harnesses,
     is_harness_installed,
 )
-from skore_cli.hub import _commands as _hub_commands
 
 
 def _ctx(workspace, **kwargs):
@@ -499,8 +496,7 @@ def _prepare_claude_launch(tmp_path, monkeypatch):
         lambda cmd: "/usr/bin/claude" if cmd == "claude" else None,
     )
     monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
-    monkeypatch.delenv(_agents.SDK_API_KEY_ENV, raising=False)
-    monkeypatch.delenv(_agents.SDK_URI_ENV, raising=False)
+    monkeypatch.delenv("SKORE_HUB_URI", raising=False)
     return captured
 
 
@@ -514,56 +510,24 @@ def _write_skore_file(workspace, **overrides):
     (workspace / ".skore").write_text(json.dumps(payload))
 
 
-@pytest.fixture(autouse=True)
-def stub_registry(monkeypatch):
-    """Serve the stored API key without touching the real credential registry."""
-    monkeypatch.setattr(
-        _hub_commands,
-        "_registry",
-        lambda: SimpleNamespace(
-            get=lambda *, host, workspace: (
-                "secret-key"
-                if (host, workspace) == ("http://hub.test", "acme")
-                else None
-            )
-        ),
-    )
-
-
-def test_launch_exports_sdk_credentials_from_skore_file(tmp_path, monkeypatch):
+def test_launch_exports_sdk_uri_from_skore_file(tmp_path, monkeypatch):
     captured = _prepare_claude_launch(tmp_path, monkeypatch)
     _write_skore_file(tmp_path)
 
     _agents.launch_harness(AGENTS["claude-code"], tmp_path)
 
-    assert captured["env"][_agents.SDK_API_KEY_ENV] == "secret-key"
-    assert captured["env"][_agents.SDK_URI_ENV] == "http://hub.test"
+    assert captured["env"]["SKORE_HUB_URI"] == "http://hub.test"
+    assert "SKORE_HUB_API_KEY" not in captured["env"]
 
 
-def test_launch_exports_only_the_uri_without_a_stored_key(tmp_path, monkeypatch):
-    captured = _prepare_claude_launch(tmp_path, monkeypatch)
-    (tmp_path / ".skore").write_text(
-        json.dumps(
-            {"hub_url": "http://hub.test", "workspace": "other", "workspace_id": 2}
-        )
-    )
-
-    _agents.launch_harness(AGENTS["claude-code"], tmp_path)
-
-    assert _agents.SDK_API_KEY_ENV not in captured["env"]
-    assert captured["env"][_agents.SDK_URI_ENV] == "http://hub.test"
-
-
-def test_launch_keeps_sdk_credentials_already_in_the_environment(tmp_path, monkeypatch):
+def test_launch_overwrites_sdk_uri_from_skore_file(tmp_path, monkeypatch):
     captured = _prepare_claude_launch(tmp_path, monkeypatch)
     _write_skore_file(tmp_path)
-    monkeypatch.setenv(_agents.SDK_API_KEY_ENV, "user-key")
-    monkeypatch.setenv(_agents.SDK_URI_ENV, "http://user.hub")
+    monkeypatch.setenv("SKORE_HUB_URI", "http://user.hub")
 
     _agents.launch_harness(AGENTS["claude-code"], tmp_path)
 
-    assert captured["env"][_agents.SDK_API_KEY_ENV] == "user-key"
-    assert captured["env"][_agents.SDK_URI_ENV] == "http://user.hub"
+    assert captured["env"]["SKORE_HUB_URI"] == "http://hub.test"
 
 
 def test_launch_exports_nothing_without_a_skore_file(tmp_path, monkeypatch):
@@ -571,8 +535,7 @@ def test_launch_exports_nothing_without_a_skore_file(tmp_path, monkeypatch):
 
     _agents.launch_harness(AGENTS["claude-code"], tmp_path)
 
-    assert _agents.SDK_API_KEY_ENV not in captured["env"]
-    assert _agents.SDK_URI_ENV not in captured["env"]
+    assert "SKORE_HUB_URI" not in captured["env"]
 
 
 def test_launch_exports_nothing_from_an_incomplete_skore_file(tmp_path, monkeypatch):
@@ -581,8 +544,7 @@ def test_launch_exports_nothing_from_an_incomplete_skore_file(tmp_path, monkeypa
 
     _agents.launch_harness(AGENTS["claude-code"], tmp_path)
 
-    assert _agents.SDK_API_KEY_ENV not in captured["env"]
-    assert os.environ.get(_agents.SDK_API_KEY_ENV) is None
+    assert "SKORE_HUB_URI" not in captured["env"]
 
 
 def test_launch_harness_errors_when_not_detected(tmp_path, monkeypatch):

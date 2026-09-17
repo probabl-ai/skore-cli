@@ -201,9 +201,7 @@ def test_hub_api_key_generate_requires_workspace():
 
 
 def test_hub_api_key_generate_stores_key(monkeypatch):
-    monkeypatch.setattr(
-        _hub, "resolve_hub_uri", lambda host, *a, **k: "http://hub.test"
-    )
+    monkeypatch.setattr(_hub, "_host", lambda host: host or "http://hub.test")
     monkeypatch.setattr(_hub, "ensure_login", lambda *, timeout: "tok")
     monkeypatch.setattr(
         _hub._client, "me", lambda hub_url, token: ("user-1", [_membership("team")])
@@ -220,9 +218,7 @@ def test_hub_api_key_generate_stores_key(monkeypatch):
 
 
 def test_hub_api_key_generate_unknown_workspace(monkeypatch):
-    monkeypatch.setattr(
-        _hub, "resolve_hub_uri", lambda host, *a, **k: "http://hub.test"
-    )
+    monkeypatch.setattr(_hub, "_host", lambda host: host or "http://hub.test")
     monkeypatch.setattr(_hub, "ensure_login", lambda *, timeout: "tok")
     monkeypatch.setattr(
         _hub._client, "me", lambda hub_url, token: ("user-1", [_membership("team")])
