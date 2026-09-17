@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import rich_click as click
@@ -20,8 +21,6 @@ from skore_cli._agents import (
     normalize_harness_name,
 )
 from skore_cli._hub_auth import ensure_login
-from skore_cli._skore import URI_ENV, resolve_hub_uri
-from skore_cli._skore import auth as _auth
 from skore_cli._style import console
 from skore_cli.agent._skore_file import SkoreConfig, ensure_gitignore_entry
 from skore_cli.hub import _client
@@ -117,7 +116,7 @@ def _resolve_membership(
     default=None,
     help=(
         "Base URL of the hub (e.g. http://127.0.0.1:8000). Defaults to the "
-        f"{URI_ENV} env var or the public hub."
+        "SKORE_HUB_URI env var or the public hub."
     ),
 )
 @click.option(
@@ -166,14 +165,15 @@ def agent(
         raise click.ClickException(f"workspace does not exist: {workspace}")
 
     config = SkoreConfig.load(workspace)
+    if hub_url:
+        os.environ["SKORE_HUB_URI"] = hub_url
 
     if config is not None and config.workspace:
-        resolved_hub_url = (
-            resolve_hub_uri(hub_url, _auth) if hub_url is not None else config.hub_url
-        )
         harness_name = harness_name or config.harness
     else:
-        resolved_hub_url = resolve_hub_uri(hub_url, _auth)
+        from skore._plugins.hub.authentication.uri import URI
+
+        resolved_hub_url = URI()
         token = _ensure_login(resolved_hub_url, timeout=login_timeout)
         _, memberships = _client.me(resolved_hub_url, token)
         if not memberships:

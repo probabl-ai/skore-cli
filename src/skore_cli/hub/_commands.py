@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import os
+
 import rich_click as click
 from rich.table import Table
 
 from skore_cli._hub_auth import ensure_login
-from skore_cli._skore import auth as _auth
-from skore_cli._skore import resolve_hub_uri
 from skore_cli._style import console
 
 from . import _client
@@ -39,13 +39,17 @@ def hub(ctx) -> None:
 
 
 def _registry():
-    """Import ``skore``'s API-key registry, or fail if ``skore`` is missing."""
-    return _auth("registry")
+    """Return ``skore``'s API-key registry."""
+    from skore._plugins.hub.authentication import registry
+
+    return registry
 
 
 def _host(host: str | None) -> str:
     """Return ``host``, or skore's ``URI()`` when ``host`` is omitted."""
-    return host or _auth("uri").URI()
+    from skore._plugins.hub.authentication import URI
+
+    return host or URI()
 
 
 def _resolve_api_key_name(base: str, existing_names: list[str]) -> str:
@@ -128,7 +132,9 @@ def generate(
     host: str | None, workspace: str, name: str | None, login_timeout: int
 ) -> None:
     """Mint a workspace-scoped Hub API key and store it locally."""
-    hub_url = resolve_hub_uri(host, _auth)
+    if host:
+        os.environ["SKORE_HUB_URI"] = host
+    hub_url = _host(host)
     token = ensure_login(timeout=login_timeout)
     user_id, memberships = _client.me(hub_url, token)
     if not memberships:

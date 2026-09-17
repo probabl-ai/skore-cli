@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -36,6 +37,7 @@ class SkoreConfig:
         if not hub_url or not workspace or workspace_id is None:
             return None
         harness = normalize_harness_name(data.get("harness"))
+        os.environ["SKORE_HUB_URI"] = hub_url
         return cls(
             hub_url=hub_url,
             workspace=workspace,
