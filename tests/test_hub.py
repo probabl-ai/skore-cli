@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 from click.testing import CliRunner
-
 from skore._plugins.hub.authentication.api_key import registry
 from skore._plugins.hub.authentication.uri import URI
+
 from skore_cli import cli
 
 pytestmark = pytest.mark.usefixtures("monkeypatch_home", "monkeypatch_keyring")
