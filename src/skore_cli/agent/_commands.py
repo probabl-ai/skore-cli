@@ -20,11 +20,11 @@ from skore_cli._agents import (
     launch_harness,
     normalize_harness_name,
 )
-from skore_cli._hub_auth import ensure_login
 from skore_cli._style import console
 from skore_cli.agent._skore_file import SkoreConfig, ensure_gitignore_entry
 from skore_cli.hub import _client
 from skore_cli.hub._commands import _registry, generate
+from skore_cli.hub.login import login
 
 
 def _pick_workspace(
@@ -63,15 +63,11 @@ def _pick_harness(workspace: Path) -> str:
     return app.result
 
 
-def _ensure_login(hub_url: str, *, timeout: int) -> str:
-    """Return a bearer token, running interactive login when needed."""
-    return ensure_login(timeout=timeout)
-
-
 def _api_key_for(ctx, config: SkoreConfig, *, login_timeout: int) -> str:
     """Return the workspace API key, minting one through ``generate`` if absent."""
     registry = _registry()
     api_key = registry.get(host=config.hub_url, workspace=config.workspace)
+
     if api_key:
         return api_key
 
@@ -82,11 +78,14 @@ def _api_key_for(ctx, config: SkoreConfig, *, login_timeout: int) -> str:
         name=None,
         login_timeout=login_timeout,
     )
+
     api_key = registry.get(host=config.hub_url, workspace=config.workspace)
+
     if not api_key:
         raise click.ClickException(
             f"could not read an API key for workspace '{config.workspace}'."
         )
+
     return api_key
 
 
@@ -174,8 +173,8 @@ def agent(
         from skore._plugins.hub.authentication.uri import URI
 
         resolved_hub_url = URI()
-        token = _ensure_login(resolved_hub_url, timeout=login_timeout)
-        _, memberships = _client.me(resolved_hub_url, token)
+        token = login(timeout=login_timeout)
+        _, memberships = _client.me(resolved_hub_url, token.access)
         if not memberships:
             raise click.ClickException(
                 "you are not a member of any hub workspace; create or join one first."
