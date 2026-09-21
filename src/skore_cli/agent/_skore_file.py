@@ -15,15 +15,15 @@ SKORE_FILENAME = ".skore"
 class SkoreConfig:
     """Persisted Skore agent settings for a project."""
 
-    hub_url: str
-    workspace: str
-    workspace_id: int
-    api_key: str
+    hub_url: str | None = None
+    workspace: str | None = None
+    workspace_id: int | None = None
+    api_key: str | None = None
     harness: str | None = None
 
     @classmethod
     def load(cls, path: Path) -> SkoreConfig | None:
-        """Load ``.skore`` from ``path`` when present and valid."""
+        """Load ``.skore`` from ``path`` when present and parseable."""
         file_path = path / SKORE_FILENAME
         if not file_path.is_file():
             return None
@@ -31,17 +31,28 @@ class SkoreConfig:
             data = json.loads(file_path.read_text() or "{}")
         except json.JSONDecodeError:
             return None
-        hub_url = data.get("hub_url")
-        workspace = data.get("workspace")
-        workspace_id = data.get("workspace_id")
-        api_key = data.get("api_key")
-        if not hub_url or not workspace or workspace_id is None or not api_key:
+        if not isinstance(data, dict):
             return None
-        harness = normalize_harness_name(data.get("harness"))
+        workspace_id = data.get("workspace_id")
+        if workspace_id is not None:
+            try:
+                workspace_id = int(workspace_id)
+            except (TypeError, ValueError):
+                workspace_id = None
+        hub_url = data.get("hub_url") if isinstance(data.get("hub_url"), str) else None
+        workspace = (
+            data.get("workspace") if isinstance(data.get("workspace"), str) else None
+        )
+        api_key = data.get("api_key") if isinstance(data.get("api_key"), str) else None
+        harness = data.get("harness") if isinstance(data.get("harness"), str) else None
+        harness = normalize_harness_name(harness)
+        hub_url = hub_url or None
+        workspace = workspace or None
+        api_key = api_key or None
         return cls(
             hub_url=hub_url,
             workspace=workspace,
-            workspace_id=int(workspace_id),
+            workspace_id=workspace_id,
             api_key=api_key,
             harness=harness,
         )

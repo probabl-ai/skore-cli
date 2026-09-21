@@ -16,6 +16,47 @@ def _transport(handler):
 
 
 # --------------------------------------------------------------------------- #
+# probe_hub
+# --------------------------------------------------------------------------- #
+
+
+def test_probe_hub_rejects_non_http_url():
+    assert _client.probe_hub("not-a-url") is False
+    assert _client.probe_hub("ftp://hub.test") is False
+    assert _client.probe_hub("") is False
+
+
+def test_probe_hub_true_when_hub_answers():
+    def handler(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/models"
+        return httpx.Response(200, json={"data": []})
+
+    assert _client.probe_hub("http://hub.test", transport=_transport(handler)) is True
+
+
+def test_probe_hub_true_when_models_requires_auth():
+    def handler(request):
+        return httpx.Response(401, json={"detail": "unauthorized"})
+
+    assert _client.probe_hub("http://hub.test", transport=_transport(handler)) is True
+
+
+def test_probe_hub_false_when_models_missing():
+    def handler(request):
+        return httpx.Response(404, json={"detail": "not found"})
+
+    assert _client.probe_hub("http://hub.test", transport=_transport(handler)) is False
+
+
+def test_probe_hub_false_when_unreachable():
+    def handler(request):
+        raise httpx.ConnectError("refused", request=request)
+
+    assert _client.probe_hub("http://hub.test", transport=_transport(handler)) is False
+
+
+# --------------------------------------------------------------------------- #
 # me
 # --------------------------------------------------------------------------- #
 
