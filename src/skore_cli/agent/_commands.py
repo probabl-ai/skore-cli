@@ -332,6 +332,7 @@ def agent(
 
     if not reusable:
         assert api_key is None
+        assert membership is not None
         api_key = _create_workspace_api_key(
             resolved_hub_url, token, user_id, membership, harness_name
         )
@@ -347,6 +348,7 @@ def agent(
         if first_run:
             console.print(f"[skore.ok]+[/] saved [skore.path]{config_path}[/]")
 
+    assert config is not None
     harness = get_harness(harness_name)
     if not is_harness_installed(harness):
         raise click.ClickException(

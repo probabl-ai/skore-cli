@@ -1198,7 +1198,9 @@ def test_agent_complete_skore_skips_hub_calls(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands._client,
         "me",
-        lambda hub_url, token=None, **k: calls.append("me") or ("user-1", [_membership()]),
+        lambda hub_url, token=None, **k: (
+            calls.append("me") or ("user-1", [_membership()])
+        ),
     )
     monkeypatch.setattr(
         _commands,
