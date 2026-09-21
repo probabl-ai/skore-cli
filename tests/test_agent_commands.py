@@ -1233,9 +1233,7 @@ def test_agent_fails_when_saved_hub_is_unreachable(tmp_path, monkeypatch):
     _write_skore(tmp_path, hub_url="http://not-a-hub.test")
     _mock_harness_on_path(monkeypatch, "opencode")
     monkeypatch.setattr(_commands._client, "probe_hub", lambda url, **k: False)
-    monkeypatch.setattr(
-        _commands, "launch_harness", lambda *a, **k: launched.append(a)
-    )
+    monkeypatch.setattr(_commands, "launch_harness", lambda *a, **k: launched.append(a))
 
     result = CliRunner().invoke(
         agent, ["--workspace", str(tmp_path), "--harness", "opencode"]
