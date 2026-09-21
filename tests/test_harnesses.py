@@ -501,9 +501,7 @@ def test_launch_cursor_cli_uses_agent(tmp_path, monkeypatch):
     assert captured["cwd"] == str(tmp_path)
 
 
-def test_launch_cursor_cli_prefers_cursor_agent_when_both_exist(
-    tmp_path, monkeypatch
-):
+def test_launch_cursor_cli_prefers_cursor_agent_when_both_exist(tmp_path, monkeypatch):
     captured: dict[str, object] = {}
 
     def fake_exec(name, argv, *, env=None):
