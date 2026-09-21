@@ -585,6 +585,120 @@ def test_current_ide_is_vscode_from_term_program(monkeypatch):
     assert _agents._current_ide_binary() == "code"
 
 
+def test_current_ide_is_cursor_from_cursor_cli(monkeypatch):
+    monkeypatch.setenv("CURSOR_CLI", "1")
+    assert _agents._current_ide_binary() == "cursor"
+
+
+def test_missing_harness_message_claude_plugin_outside_ide():
+    assert (
+        _agents.missing_harness_message(AGENTS["claude-plugin"])
+        == "Claude Plugin is not installed in VS Code or Cursor."
+    )
+
+
+def test_missing_harness_message_claude_ui_off_darwin(monkeypatch):
+    monkeypatch.setattr(_agents.sys, "platform", "linux")
+    assert (
+        _agents.missing_harness_message(AGENTS["claude-ui"])
+        == "Claude UI is only supported on macOS."
+    )
+
+
+def test_launch_claude_ui_errors_when_app_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(_agents.sys, "platform", "darwin")
+    monkeypatch.setattr(_agents, "CLAUDE_UI_APP_PATH", tmp_path / "absent.app")
+    with pytest.raises(RuntimeError, match="Claude UI is not installed"):
+        _agents._launch_claude_ui(tmp_path, "skore-agent")
+
+
+def test_open_uri_uses_xdg_open_on_linux(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    monkeypatch.setattr(_agents.sys, "platform", "linux")
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    _agents._open_uri("vscode://anthropic.claude-code/open")
+    assert captured["argv"] == ["xdg-open", "vscode://anthropic.claude-code/open"]
+
+
+def test_open_uri_uses_cmd_on_windows(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    monkeypatch.setattr(_agents.sys, "platform", "win32")
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    _agents._open_uri("vscode://anthropic.claude-code/open")
+    assert captured["argv"] == [
+        "cmd",
+        "/c",
+        "start",
+        "",
+        "vscode://anthropic.claude-code/open",
+    ]
+
+
+def test_open_workspace_in_ide_skips_missing_binary(tmp_path, monkeypatch):
+    ran: list[object] = []
+    monkeypatch.setattr(_agents.shutil, "which", lambda name: None)
+    monkeypatch.setattr(
+        _agents.subprocess, "run", lambda *args, **kwargs: ran.append(args)
+    )
+    _agents._open_workspace_in_ide("code", tmp_path)
+    assert ran == []
+
+
+def test_launch_claude_plugin_errors_when_host_missing(tmp_path):
+    with pytest.raises(RuntimeError, match="Claude Plugin is not installed"):
+        _agents._launch_claude_plugin(tmp_path, "skore-agent")
+
+
+def test_launch_cursor_cli_errors_when_binary_missing(tmp_path):
+    with pytest.raises(RuntimeError, match="Cursor CLI is not installed"):
+        _agents._launch_cursor_cli(tmp_path, "skore-agent")
+
+
+def test_launch_cursor_cli_restores_cwd_when_exec_fails(tmp_path, monkeypatch):
+    previous = os.getcwd()
+    monkeypatch.setattr(_agents, "_resolve_cursor_cli_binary", lambda: "cursor-agent")
+    monkeypatch.setattr(
+        _agents,
+        "_exec_harness",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    with pytest.raises(RuntimeError, match="boom"):
+        _agents._launch_cursor_cli(tmp_path, "skore-agent")
+    assert os.getcwd() == previous
+
+
+def test_launch_copilot_cli_restores_cwd_when_exec_fails(tmp_path, monkeypatch):
+    previous = os.getcwd()
+    (tmp_path / ".skore").write_text(
+        json.dumps(
+            {
+                "hub_url": "http://hub.test",
+                "workspace": "ws-1",
+                "workspace_id": 1,
+                "api_key": "secret-key",
+                "harness": "copilot-cli",
+            }
+        )
+        + "\n"
+    )
+    monkeypatch.setattr(
+        _agents,
+        "_exec_harness",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    with pytest.raises(RuntimeError, match="boom"):
+        _agents._launch_copilot_cli(tmp_path, "skore-agent")
+    assert os.getcwd() == previous
+
+
 def test_claude_plugin_in_cursor_via_askpass_ignores_vscode_install(
     tmp_path, monkeypatch
 ):

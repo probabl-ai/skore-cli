@@ -253,6 +253,19 @@ def test_harness_display_name_uses_label():
     assert AGENTS["agents"].harness_display_name == "Agents"
 
 
+def test_ide_extension_hosts_uses_home(tmp_path, monkeypatch):
+    monkeypatch.setattr(_agents.Path, "home", lambda: tmp_path)
+    assert _agents.ide_extension_hosts() == (
+        ("cursor", tmp_path / ".cursor" / "extensions", "cursor"),
+        ("code", tmp_path / ".vscode" / "extensions", "vscode"),
+        (
+            "code-insiders",
+            tmp_path / ".vscode-insiders" / "extensions",
+            "vscode-insiders",
+        ),
+    )
+
+
 def test_harness_registry_helpers(monkeypatch, tmp_path):
     monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
     monkeypatch.setattr(_agents, "CLAUDE_UI_APP_PATH", tmp_path / "absent.app")
