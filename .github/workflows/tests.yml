@@ -48,3 +48,31 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: probabl-ai/skore-cli
+
+  harness-config:
+    name: harness config / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    # Vendor installers that prompt cannot be answered here; cap the job so one
+    # of them cannot sit on a runner until the workflow-level timeout.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          environments: test-py312
+          frozen: true
+
+      - name: Install harnesses
+        run: bash .github/scripts/install-harnesses.sh < /dev/null
+
+      - name: Run harness config integration tests
+        env:
+          SKORE_INTEGRATION: "1"
+        run: pixi run -e test-py312 tests-integration
