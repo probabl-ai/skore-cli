@@ -1228,6 +1228,24 @@ def test_agent_fails_when_hub_probe_fails(tmp_path, monkeypatch):
     assert "hub URL is not valid" in _plain_output(result.output)
 
 
+def test_agent_fails_when_saved_hub_is_unreachable(tmp_path, monkeypatch):
+    launched: list[object] = []
+    _write_skore(tmp_path, hub_url="http://not-a-hub.test")
+    _mock_harness_on_path(monkeypatch, "opencode")
+    monkeypatch.setattr(_commands._client, "probe_hub", lambda url, **k: False)
+    monkeypatch.setattr(
+        _commands, "launch_harness", lambda *a, **k: launched.append(a)
+    )
+
+    result = CliRunner().invoke(
+        agent, ["--workspace", str(tmp_path), "--harness", "opencode"]
+    )
+
+    assert result.exit_code != 0
+    assert "hub URL is not valid" in _plain_output(result.output)
+    assert launched == []
+
+
 def test_agent_complete_skore_skips_hub_calls(tmp_path, monkeypatch):
     _write_skore(tmp_path)
     _mock_harness_on_path(monkeypatch, "opencode")
@@ -1255,7 +1273,7 @@ def test_agent_complete_skore_skips_hub_calls(tmp_path, monkeypatch):
     )
 
     assert result.exit_code == 0, result.output
-    assert calls == []
+    assert calls == ["probe_hub"]
 
 
 def test_agent_warns_and_relogins_when_api_key_missing(tmp_path, monkeypatch):

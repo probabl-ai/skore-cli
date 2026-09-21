@@ -257,6 +257,8 @@ def agent(
 
     if not _client.is_http_url(resolved_hub_url):
         raise click.ClickException(f"hub URL is not valid: {resolved_hub_url}")
+    if not _client.probe_hub(resolved_hub_url):
+        raise click.ClickException(f"hub URL is not valid: {resolved_hub_url}")
 
     hub_overridden = _hub_overridden(
         hub_url, config.hub_url if config else None, resolved_hub_url
@@ -268,8 +270,6 @@ def agent(
         harness_name = harness_name or config.harness
         api_key = config.api_key
     else:
-        if not _client.probe_hub(resolved_hub_url):
-            raise click.ClickException(f"hub URL is not valid: {resolved_hub_url}")
         if not first_run:
             assert config is not None
             if hub_overridden:
