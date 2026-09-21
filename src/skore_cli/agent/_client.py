@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 import rich_click as click
 
@@ -47,6 +48,31 @@ def _client(hub_url: str, token: str, transport: Any = None):
         follow_redirects=True,
         transport=transport,
     )
+
+
+def is_http_url(hub_url: str) -> bool:
+    """Return whether ``hub_url`` is an absolute http(s) URL."""
+    parsed = urlparse(hub_url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def probe_hub(hub_url: str, *, transport: Any = None) -> bool:
+    """Return whether ``hub_url`` looks like a reachable OpenAI-compatible hub."""
+    if not hub_url or not is_http_url(hub_url):
+        return False
+    import httpx
+
+    try:
+        with httpx.Client(
+            base_url=hub_url.rstrip("/"),
+            timeout=_TIMEOUT,
+            follow_redirects=True,
+            transport=transport,
+        ) as client:
+            response = client.get("/v1/models")
+    except httpx.HTTPError:
+        return False
+    return response.status_code != 404
 
 
 def _raise_for(response: Any, *, context: str) -> None:

@@ -623,7 +623,7 @@ def _export_sdk_credentials(workspace: Path) -> None:
     from skore_cli.agent._skore_file import SkoreConfig
 
     config = SkoreConfig.load(workspace)
-    if config is None:
+    if config is None or not config.api_key or not config.hub_url:
         return
     os.environ.setdefault(SDK_API_KEY_ENV, config.api_key)
     os.environ.setdefault(SDK_URI_ENV, config.hub_url)

@@ -142,6 +142,48 @@ def _resolve_membership(
     return membership
 
 
+def _warn(message: str) -> None:
+    console.print(f"[yellow]warning:[/] {message}")
+
+
+def _config_reusable(config: SkoreConfig | None) -> bool:
+    return (
+        config is not None
+        and bool(config.api_key)
+        and bool(config.hub_url)
+        and bool(config.workspace)
+        and config.workspace_id is not None
+    )
+
+
+def _hub_overridden(flag: str | None, saved: str | None, resolved: str) -> bool:
+    if flag is None:
+        return False
+    return not saved or saved.rstrip("/") != resolved.rstrip("/")
+
+
+def _matching_membership(
+    memberships: list[_client.Membership],
+    workspace: str | None,
+    workspace_id: int | None,
+) -> _client.Membership | None:
+    if workspace is None or workspace_id is None:
+        return None
+    return next(
+        (
+            item
+            for item in memberships
+            if item.public_id == workspace and item.workspace_id == workspace_id
+        ),
+        None,
+    )
+
+
+def _harness_is_usable(name: str | None) -> bool:
+    canonical = normalize_harness_name(name)
+    return canonical in HARNESS_NAMES and is_harness_installed(get_harness(canonical))
+
+
 @click.command()
 @click.option(
     "--workspace",
@@ -198,61 +240,83 @@ def agent(
     (the command its installer puts on PATH); both names mean the same harness.
     """
     harness_name = normalize_harness_name(harness_name)
+    explicit_harness = harness_name is not None
     workspace = workspace.resolve()
     if not workspace.is_dir():
         raise click.ClickException(f"workspace does not exist: {workspace}")
 
     config = SkoreConfig.load(workspace)
+    first_run = config is None
 
-    if config is not None and config.api_key and config.workspace:
-        resolved_hub_url = (
-            resolve_hub_uri(hub_url, _auth) if hub_url is not None else config.hub_url
-        )
-        harness_name = harness_name or config.harness
+    if hub_url is not None:
+        resolved_hub_url = resolve_hub_uri(hub_url, _auth)
+    elif config is not None and config.hub_url:
+        resolved_hub_url = config.hub_url
     else:
         resolved_hub_url = resolve_hub_uri(hub_url, _auth)
+
+    if not _client.is_http_url(resolved_hub_url):
+        raise click.ClickException(f"hub URL is not valid: {resolved_hub_url}")
+    if not _client.probe_hub(resolved_hub_url):
+        raise click.ClickException(f"hub URL is not valid: {resolved_hub_url}")
+
+    hub_overridden = _hub_overridden(
+        hub_url, config.hub_url if config else None, resolved_hub_url
+    )
+    reusable = _config_reusable(config) and not hub_overridden
+
+    if reusable:
+        assert config is not None
+        harness_name = harness_name or config.harness
+        api_key = config.api_key
+    else:
+        if not first_run:
+            assert config is not None
+            if hub_overridden:
+                _warn("hub URL changed; logging in again.")
+            elif not config.api_key:
+                _warn("saved API key is missing or invalid; logging in again.")
+            elif not config.hub_url:
+                _warn("saved hub URL is missing or invalid; logging in again.")
+            else:
+                _warn("saved workspace is missing or invalid; pick a workspace.")
         token = _ensure_login(resolved_hub_url, timeout=login_timeout)
         user_id, memberships = _client.me(resolved_hub_url, token)
         if not memberships:
             raise click.ClickException(
                 "you are not a member of any hub workspace; create or join one first."
             )
-
         saved_workspace = config.workspace if config else None
-        membership = _resolve_membership(memberships, saved_workspace)
-
-        if config is None or not config.api_key:
-            if harness_name is None:
-                if is_non_interactive():
-                    detected = detect_agent()
-                    if (
-                        detected
-                        and detected.harness_name
-                        and is_harness_installed(detected)
-                    ):
-                        harness_name = detected.harness_name
-                    else:
-                        raise click.UsageError(
-                            "pass --harness to create an API key non-interactively."
-                        )
-                else:
-                    harness_name = _pick_harness(workspace)
-            api_key = _create_workspace_api_key(
-                resolved_hub_url, token, user_id, membership, harness_name
-            )
-        else:
-            api_key = config.api_key
-
-        config = SkoreConfig(
-            hub_url=resolved_hub_url,
-            workspace=membership.public_id,
-            workspace_id=membership.workspace_id,
-            api_key=api_key,
-            harness=harness_name or (config.harness if config else None),
+        saved_workspace_id = config.workspace_id if config else None
+        membership = _matching_membership(
+            memberships, saved_workspace, saved_workspace_id
         )
-        config_path = config.save(workspace)
-        ensure_gitignore_entry(workspace)
-        console.print(f"[skore.ok]+[/] saved [skore.path]{config_path}[/]")
+        if membership is None:
+            if (
+                not first_run
+                and saved_workspace is not None
+                and saved_workspace_id is not None
+            ):
+                _warn("saved workspace is missing or invalid; pick a workspace.")
+            resolve_as = None if hub_overridden else saved_workspace
+            if first_run or is_non_interactive():
+                membership = _resolve_membership(memberships, resolve_as)
+            else:
+                membership = _pick_workspace(memberships)
+        api_key = None
+
+    requested_harness = harness_name or (config.harness if config else None)
+    if not _harness_is_usable(requested_harness):
+        if config is not None and not explicit_harness:
+            _warn("saved harness is missing or not detected; pick a harness.")
+        if explicit_harness and requested_harness and is_non_interactive():
+            harness = get_harness(requested_harness)
+            raise click.ClickException(
+                f"{harness.harness_display_name} is not installed or not on PATH."
+            )
+        harness_name = None
+    else:
+        harness_name = normalize_harness_name(requested_harness)
 
     if harness_name is None:
         if is_non_interactive():
@@ -266,6 +330,25 @@ def agent(
         else:
             harness_name = _pick_harness(workspace)
 
+    if not reusable:
+        assert api_key is None
+        assert membership is not None
+        api_key = _create_workspace_api_key(
+            resolved_hub_url, token, user_id, membership, harness_name
+        )
+        config = SkoreConfig(
+            hub_url=resolved_hub_url,
+            workspace=membership.public_id,
+            workspace_id=membership.workspace_id,
+            api_key=api_key,
+            harness=harness_name,
+        )
+        config_path = config.save(workspace)
+        ensure_gitignore_entry(workspace)
+        if first_run:
+            console.print(f"[skore.ok]+[/] saved [skore.path]{config_path}[/]")
+
+    assert config is not None
     harness = get_harness(harness_name)
     if not is_harness_installed(harness):
         raise click.ClickException(
@@ -287,6 +370,7 @@ def agent(
         f"[skore.path]{workspace}[/]"
     )
     assert harness.configure is not None
+    assert config.hub_url is not None and config.api_key is not None
     harness.configure(
         HarnessContext(
             workspace=workspace,
