@@ -89,6 +89,29 @@ def test_skore_config_load_invalid_returns_none(tmp_path):
     assert SkoreConfig.load(tmp_path) is None
 
 
+def test_skore_config_load_returns_none_when_not_an_object(tmp_path):
+    (tmp_path / SKORE_FILENAME).write_text("[]\n")
+    assert SkoreConfig.load(tmp_path) is None
+
+
+def test_skore_config_load_drops_invalid_workspace_id(tmp_path):
+    (tmp_path / SKORE_FILENAME).write_text(
+        json.dumps(
+            {
+                "hub_url": "http://hub.test",
+                "workspace": "ws-1",
+                "workspace_id": "not-an-int",
+                "api_key": "secret",
+            }
+        )
+        + "\n"
+    )
+    loaded = SkoreConfig.load(tmp_path)
+    assert loaded is not None
+    assert loaded.workspace_id is None
+    assert loaded.hub_url == "http://hub.test"
+
+
 def test_skore_config_load_normalizes_legacy_claude_code_harness(tmp_path):
     _write_skore(tmp_path, harness="claude-code")
     loaded = SkoreConfig.load(tmp_path)
@@ -1180,6 +1203,25 @@ def test_agent_fails_when_saved_hub_url_is_invalid(tmp_path, monkeypatch):
 
     result = CliRunner().invoke(
         agent, ["--workspace", str(tmp_path), "--harness", "opencode"]
+    )
+
+    assert result.exit_code != 0
+    assert "hub URL is not valid" in _plain_output(result.output)
+
+
+def test_agent_fails_when_hub_probe_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(_commands._client, "probe_hub", lambda url, **k: False)
+
+    result = CliRunner().invoke(
+        agent,
+        [
+            "--workspace",
+            str(tmp_path),
+            "--hub-url",
+            "http://hub.test",
+            "--harness",
+            "opencode",
+        ],
     )
 
     assert result.exit_code != 0
