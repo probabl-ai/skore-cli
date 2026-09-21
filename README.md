@@ -57,9 +57,15 @@ skore skills remove        # remove installed skills
 
 On the first run, `skore agent` logs in when needed, lets you pick a workspace
 and harness, creates a workspace API key, writes the harness configuration and
-launches the agent. Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude**,
-**Cursor**, **OpenCode**, **Pi**, **GitHub Copilot** and **Codex** (all must be on
-`PATH`; on macOS, Bob IDE is found via its application bundle). Bob IDE also
+launches the agent. Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude CLI**,
+**Claude UI**, **Claude Plugin**, **Cursor IDE**, **Cursor CLI**, **OpenCode**,
+**Pi**, **GitHub Copilot**, **Copilot CLI** and **Codex CLI**
+(detected via `PATH`, the application bundle on macOS for Bob IDE and Claude UI,
+or the Claude Code extension for Claude Plugin). The interactive picker lists
+only harnesses detected on this machine.
+`--harness claude` / `claude-cli` is the CLI; `claude-ui` and `claude-plugin`
+are the desktop app and IDE extension. `--harness cursor` is Cursor IDE;
+`cursor-cli` is the `agent` binary. Bob IDE also
 accepts `--harness bobide` — the name of the command its installer puts on
 `PATH` — as an alias for `--harness bob-ide`. Later runs reuse
 `.skore` in the project directory (gitignored). Use `SKORE_HUB_URI` (or

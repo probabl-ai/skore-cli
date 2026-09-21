@@ -864,6 +864,7 @@ def test_remove_interactive_without_any_skill(release, workspace, monkeypatch):
 _AGENT_ENV_VARS = (
     "CLAUDECODE",
     "CURSOR_AGENT",
+    "CURSOR_CLI",
     "GEMINI_CLI",
     "CODEX_SANDBOX",
     "PI_CODING_AGENT",

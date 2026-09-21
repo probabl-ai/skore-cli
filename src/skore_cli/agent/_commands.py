@@ -17,6 +17,7 @@ from skore_cli._agents import (
     is_harness_installed,
     is_non_interactive,
     launch_harness,
+    missing_harness_message,
     normalize_harness_name,
 )
 from skore_cli._hub_auth import ensure_login
@@ -49,13 +50,13 @@ def _pick_workspace(
 
 
 def _pick_harness(workspace: Path) -> str:
-    """Launch the Textual harness picker among installed harnesses."""
+    """Launch the Textual harness picker among detected harnesses."""
     from skore_cli.agent.app import HarnessPicker
 
     installed = installed_harnesses()
     if not installed:
         raise click.ClickException(
-            "no supported harness found on PATH. Install one of: "
+            "no supported harness detected. Install one of: "
             f"{', '.join(HARNESS_NAMES)}."
         )
     rows = [
@@ -164,7 +165,7 @@ def _resolve_membership(
     "harness_name",
     type=click.Choice(HARNESS_CHOICES),
     default=None,
-    help="Harness to use non-interactively (omit to pick among installed ones).",
+    help="Harness to use non-interactively (omit to pick among detected ones).",
 )
 @click.option(
     "--model-id",
@@ -192,10 +193,13 @@ def agent(
     harness config, and launches the agent. Later runs reuse ``.skore`` in the
     project directory.
 
-    Supported harnesses: Bob Shell, Bob IDE, Claude, Cursor, OpenCode, Pi,
-    GitHub Copilot and Codex (all must be on ``PATH``; on macOS, Bob IDE is found
-    via its application bundle instead). Bob IDE also accepts ``--harness bobide``
-    (the command its installer puts on PATH); both names mean the same harness.
+    Supported harnesses: Bob Shell, Bob IDE, Claude CLI, Claude UI, Claude
+    Plugin, Cursor IDE, Cursor CLI, OpenCode, Pi, GitHub Copilot, Copilot CLI
+    and Codex CLI.
+    Detection uses ``PATH``, the application bundle on macOS for Bob IDE and
+    Claude UI, or the Claude Code IDE extension for Claude Plugin. Claude CLI
+    also accepts ``--harness claude-cli``; Bob IDE also accepts
+    ``--harness bobide``.
     """
     harness_name = normalize_harness_name(harness_name)
     workspace = workspace.resolve()
@@ -267,10 +271,6 @@ def agent(
             harness_name = _pick_harness(workspace)
 
     harness = get_harness(harness_name)
-    if not is_harness_installed(harness):
-        raise click.ClickException(
-            f"{harness.harness_display_name} is not installed or not on PATH."
-        )
 
     if config.harness != harness_name:
         config = SkoreConfig(
@@ -303,5 +303,7 @@ def agent(
             f"a new session to "
             f"use it."
         )
-    else:
-        launch_harness(harness, workspace, model_id=model_id)
+        return
+    if not is_harness_installed(harness):
+        raise click.ClickException(missing_harness_message(harness))
+    launch_harness(harness, workspace, model_id=model_id)

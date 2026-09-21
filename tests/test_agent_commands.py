@@ -11,7 +11,12 @@ import rich_click as click
 from click.testing import CliRunner
 
 from skore_cli import _agents
-from skore_cli._agents import AGENTS, DEFAULT_MODEL_ID, HARNESS_NAMES, HarnessContext
+from skore_cli._agents import (
+    AGENTS,
+    DEFAULT_MODEL_ID,
+    HARNESS_NAMES,
+    HarnessContext,
+)
 from skore_cli.agent import _client, _commands
 from skore_cli.agent import app as _agent_app
 from skore_cli.agent._commands import agent
@@ -178,7 +183,7 @@ def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: launched.append(
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: launched.append(
             selected.harness_name
         ),
     )
@@ -217,7 +222,7 @@ def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(
@@ -230,6 +235,31 @@ def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     assert saved["api_key"] == "new-secret"
     assert saved["workspace"] == "ws-1"
     assert ".skore" in (tmp_path / ".gitignore").read_text().splitlines()
+
+
+def test_agent_accepts_claude_cli_alias(tmp_path, monkeypatch):
+    _write_skore(tmp_path, harness="opencode")
+    _mock_harness_on_path(monkeypatch, "claude")
+    monkeypatch.setattr(
+        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
+    )
+    launched: list[str] = []
+    monkeypatch.setattr(
+        _commands,
+        "launch_harness",
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: launched.append(
+            selected.harness_name
+        ),
+    )
+
+    result = CliRunner().invoke(
+        agent,
+        ["--workspace", str(tmp_path), "--harness", "claude-cli"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert launched == ["claude"]
+    assert json.loads((tmp_path / SKORE_FILENAME).read_text())["harness"] == "claude"
 
 
 @pytest.mark.parametrize("harness_flag", ["bob-ide", "bobide"])
@@ -260,7 +290,7 @@ def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(
@@ -277,6 +307,7 @@ def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(
 
 
 def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
+    _clear_agent_envs(monkeypatch)
     monkeypatch.setattr(
         _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
     )
@@ -378,24 +409,61 @@ def test_pick_workspace_aborts_when_cancelled(monkeypatch):
 
 
 def test_pick_harness_returns_selection(tmp_path, monkeypatch):
+    monkeypatch.setattr(_agents, "ide_extension_hosts", lambda: ())
     monkeypatch.setattr(
-        _commands,
-        "installed_harnesses",
-        lambda: [AGENTS["opencode"], AGENTS["pi"]],
+        _agents.shutil,
+        "which",
+        lambda name: "/usr/bin/pi" if name == "pi" else None,
     )
     monkeypatch.setattr(_agent_app, "HarnessPicker", _FakePicker("pi"))
 
     assert _commands._pick_harness(tmp_path) == "pi"
 
 
-def test_pick_harness_errors_when_none_installed(tmp_path, monkeypatch):
-    monkeypatch.setattr(_commands, "installed_harnesses", lambda: [])
+def test_pick_harness_lists_only_detected(tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    class _CapturePicker:
+        def __init__(self, rows, *, preselect=0):
+            captured["rows"] = rows
+            captured["preselect"] = preselect
+            self.result = "cursor"
+
+        def run(self):
+            return None
+
+    monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
+    monkeypatch.setattr(_agents, "CLAUDE_UI_APP_PATH", tmp_path / "absent.app")
+    monkeypatch.setattr(_agents, "ide_extension_hosts", lambda: ())
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda name: "/usr/bin/cursor" if name == "cursor" else None,
+    )
+    monkeypatch.setattr(_agent_app, "HarnessPicker", _CapturePicker)
+
+    assert _commands._pick_harness(tmp_path) == "cursor"
+    rows = captured["rows"]
+    assert rows == [("cursor", "Cursor IDE", True)]
+    assert captured["preselect"] == 0
+
+
+def test_pick_harness_errors_when_none_detected(tmp_path, monkeypatch):
+    monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
+    monkeypatch.setattr(_agents, "CLAUDE_UI_APP_PATH", tmp_path / "absent.app")
+    monkeypatch.setattr(_agents, "ide_extension_hosts", lambda: ())
+    monkeypatch.setattr(_agents.shutil, "which", lambda name: None)
     with pytest.raises(click.ClickException, match="no supported harness"):
         _commands._pick_harness(tmp_path)
 
 
 def test_pick_harness_aborts_when_cancelled(tmp_path, monkeypatch):
-    monkeypatch.setattr(_commands, "installed_harnesses", lambda: [AGENTS["opencode"]])
+    monkeypatch.setattr(_agents, "ide_extension_hosts", lambda: ())
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda name: "/usr/bin/opencode" if name == "opencode" else None,
+    )
     monkeypatch.setattr(_agent_app, "HarnessPicker", _FakePicker(None))
     with pytest.raises(click.Abort):
         _commands._pick_harness(tmp_path)
@@ -528,12 +596,16 @@ def test_agent_errors_when_harness_not_installed(tmp_path, monkeypatch):
 
     assert result.exit_code != 0
     assert "not installed or not on PATH" in _plain_output(result.output)
+    assert (tmp_path / "opencode.json").is_file()
+    saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert saved["harness"] == "opencode"
 
 
 def test_agent_valid_config_without_harness_non_interactive_errors(
     tmp_path, monkeypatch
 ):
     # Config is complete (api_key + workspace) but no harness was ever saved.
+    _clear_agent_envs(monkeypatch)
     payload = {
         "hub_url": "http://hub.test",
         "workspace": "ws-1",
@@ -569,7 +641,7 @@ def test_agent_valid_config_without_harness_picks_interactively(tmp_path, monkey
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(agent, ["--workspace", str(tmp_path)])
@@ -597,7 +669,7 @@ def test_agent_first_run_picks_harness_interactively(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(agent, ["--workspace", str(tmp_path)])
@@ -617,7 +689,7 @@ def test_agent_rewrites_config_when_harness_changes(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(
@@ -636,6 +708,7 @@ def test_agent_rewrites_config_when_harness_changes(tmp_path, monkeypatch):
 _AGENT_ENV_VARS = (
     "CLAUDECODE",
     "CURSOR_AGENT",
+    "CURSOR_CLI",
     "GEMINI_CLI",
     "CODEX_SANDBOX",
     "PI_CODING_AGENT",
@@ -669,7 +742,7 @@ def test_agent_non_interactive_auto_selects_claude(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: launched.append(
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: launched.append(
             selected.harness_name
         ),
     )
@@ -703,7 +776,7 @@ def test_agent_non_interactive_auto_selects_opencode(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: launched.append(
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: launched.append(
             selected.harness_name
         ),
     )
@@ -736,7 +809,7 @@ def test_agent_non_interactive_auto_selects_pi(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: launched.append(
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: launched.append(
             selected.harness_name
         ),
     )
@@ -783,7 +856,7 @@ def test_agent_detected_different_harness_still_launches(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: launched.append(
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: launched.append(
             selected.harness_name
         ),
     )
@@ -816,7 +889,7 @@ def test_agent_reuse_path_auto_selects_detected_harness(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: launched.append(
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: launched.append(
             selected.harness_name
         ),
     )

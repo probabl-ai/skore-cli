@@ -48,11 +48,15 @@ def test_agent_names_match_registry():
 def test_harness_names_come_from_registry():
     assert HARNESS_NAMES == [
         "claude",
+        "claude-ui",
+        "claude-plugin",
         "cursor",
+        "cursor-cli",
         "codex",
         "opencode",
         "pi",
         "copilot",
+        "copilot-cli",
         "bob",
         "bob-ide",
     ]
@@ -63,6 +67,13 @@ def test_harness_choices_include_canonical_names_and_aliases():
     assert "bob-ide" in HARNESS_CHOICES
     assert HARNESS_CHOICES.count("bob-ide") == 1
     assert HARNESS_CHOICES.count("bobide") == 1
+    assert "claude" in HARNESS_CHOICES
+    assert "claude-cli" in HARNESS_CHOICES
+    assert "claude-ui" in HARNESS_CHOICES
+    assert "claude-plugin" in HARNESS_CHOICES
+    assert "cursor-cli" in HARNESS_CHOICES
+    assert "copilot-cli" in HARNESS_CHOICES
+    assert "github-copilot-cli" in HARNESS_CHOICES
     assert all(name in HARNESS_CHOICES for name in HARNESS_NAMES)
 
 
@@ -231,12 +242,21 @@ def test_is_non_interactive_in_ci(monkeypatch):
 
 
 def test_harness_display_name_uses_label():
-    assert AGENTS["claude-code"].harness_display_name == "Claude"
+    assert AGENTS["claude-code"].harness_display_name == "Claude CLI"
+    assert AGENTS["claude-ui"].harness_display_name == "Claude UI"
+    assert AGENTS["claude-plugin"].harness_display_name == "Claude Plugin"
+    assert AGENTS["cursor"].harness_display_name == "Cursor IDE"
+    assert AGENTS["cursor-cli"].harness_display_name == "Cursor CLI"
+    assert AGENTS["codex"].harness_display_name == "Codex CLI"
+    assert AGENTS["github-copilot"].harness_display_name == "GitHub Copilot"
+    assert AGENTS["github-copilot-cli"].harness_display_name == "Copilot CLI"
     assert AGENTS["agents"].harness_display_name == "Agents"
 
 
 def test_harness_registry_helpers(monkeypatch, tmp_path):
     monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
+    monkeypatch.setattr(_agents, "CLAUDE_UI_APP_PATH", tmp_path / "absent.app")
+    monkeypatch.setattr(_agents, "ide_extension_hosts", lambda: ())
     monkeypatch.setattr(
         _agents.shutil,
         "which",
@@ -248,6 +268,10 @@ def test_harness_registry_helpers(monkeypatch, tmp_path):
         get_harness("missing")
     assert normalize_harness_name(None) is None
     assert normalize_harness_name("claude-code") == "claude"
+    assert normalize_harness_name("claude-cli") == "claude"
+    assert normalize_harness_name("claude-ui") == "claude-ui"
+    assert normalize_harness_name("claude-plugin") == "claude-plugin"
+    assert normalize_harness_name("cursor-cli") == "cursor-cli"
     assert normalize_harness_name("bobide") == "bob-ide"
     assert normalize_harness_name("unknown") == "unknown"
     assert is_harness_installed(AGENTS["opencode"])
@@ -271,7 +295,7 @@ def test_missing_skills_directory_message_plural():
 
 def test_launch_harness_validates_installation(monkeypatch, tmp_path):
     monkeypatch.setattr(_agents, "is_harness_installed", lambda agent: False)
-    with pytest.raises(RuntimeError, match="Claude is not installed"):
+    with pytest.raises(RuntimeError, match="Claude CLI is not installed"):
         launch_harness(AGENTS["claude-code"], tmp_path)
 
 

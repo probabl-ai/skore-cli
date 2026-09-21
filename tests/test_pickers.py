@@ -8,6 +8,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import SelectionList
 
 from skore_cli.agent.app import HarnessPicker, WorkspacePicker
+from skore_cli.agent.app._picker import _HARNESS_HELP, _HARNESS_INTRO
 from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpInput, HelpScreen
 from skore_cli.skills.app import (
@@ -86,6 +87,18 @@ def test_harness_picker_requires_selection(monkeypatch):
     app.action_confirm()
 
     assert notifications == ["Select a harness."]
+
+
+def test_harness_picker_copy_lists_all_harnesses():
+    assert "detected" in _HARNESS_INTRO.lower()
+    assert "Select one that is not" not in _HARNESS_HELP
+    assert "Claude CLI" in _HARNESS_HELP
+    assert "Claude UI" in _HARNESS_HELP
+    assert "Claude Plugin" in _HARNESS_HELP
+    assert "Cursor IDE" in _HARNESS_HELP
+    assert "Cursor CLI" in _HARNESS_HELP
+    assert "Copilot CLI" in _HARNESS_HELP
+    assert "Codex CLI" in _HARNESS_HELP
 
 
 async def test_harness_picker_help_screen():

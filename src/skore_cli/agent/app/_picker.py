@@ -13,22 +13,28 @@ from skore_cli.skills.app._widgets import AutoRadioSet
 
 _HARNESS_INTRO = (
     "Choose the agent harness to launch.\n"
-    "Only harnesses installed on PATH are listed.\n"
+    "Only harnesses detected on this machine are listed.\n"
     "[reverse] ↑/↓ [/] choose  [reverse] Enter [/] confirm  [reverse] ? [/] help"
 )
 
 _HARNESS_HELP = """\
 Pick the local coding agent to configure and launch.
 
+Only detected harnesses appear in the list.
+
 Supported harnesses:
   • Bob Shell    — writes .bob/mcp.json
   • Bob IDE      — writes .bob/mcp.json
-  • Claude       — writes .claude/settings.local.json
-  • Cursor       — writes .cursor/mcp.json
+  • Claude CLI   — writes .claude/settings.local.json
+  • Claude UI    — writes .claude/settings.local.json
+  • Claude Plugin — writes .claude/settings.local.json
+  • Cursor IDE   — writes .cursor/mcp.json
+  • Cursor CLI   — writes .cursor/mcp.json
   • OpenCode     — writes opencode.json
   • Pi           — writes .pi/agent/models.json
   • Copilot      — writes .vscode/chatLanguageModels.json
-  • Codex        — writes .codex/skore-provider.toml (+ ~/.codex/config.toml)
+  • Copilot CLI  — launches copilot with Hub provider env
+  • Codex CLI    — writes .codex/skore-provider.toml (+ ~/.codex/config.toml)
 
 Skore stores your hub credentials in .skore and selects the
 skore-agent model when the harness starts.

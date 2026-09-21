@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tomllib
 from collections.abc import Callable
@@ -54,11 +55,19 @@ CURSOR_AUTORUN_INSTRUCTIONS = (
 # command on PATH. The macOS bundle path is a module constant so tests can
 # point it somewhere that does not exist.
 BOB_IDE_APP_PATH = Path("/Applications/IBM Bob.app")
-
+# Claude Code in the desktop app (as opposed to the ``claude`` CLI on PATH).
+CLAUDE_UI_APP_PATH = Path("/Applications/Claude.app")
+CLAUDE_PLUGIN_EXTENSION = "anthropic.claude-code"
+IDE_PLUGIN_LABELS = {
+    "cursor": "Cursor",
+    "code": "VS Code",
+    "code-insiders": "VS Code Insiders",
+}
 # GitHub Copilot
 COPILOT_PROVIDER_NAME = "Skore Agent"
 COPILOT_PROJECT_CONFIG = ".vscode/chatLanguageModels.json"
 COPILOT_BINARIES = ("code", "code-insiders")
+COPILOT_CLI_BINARIES = ("copilot",)
 CODEX_PROVIDER_KEY = "skore"
 CODEX_PROVIDER_NAME = "Skore Agent"
 CODEX_PROJECT_CONFIG = ".codex/skore-provider.toml"
@@ -514,6 +523,164 @@ def _launch_claude(workspace: Path, _model_id: str) -> None:
     _exec_harness("claude", ["claude"], env=env)
 
 
+def _launch_claude_ui(workspace: Path, _model_id: str) -> None:
+    """Open the Claude desktop app on the workspace."""
+    if sys.platform != "darwin":
+        raise RuntimeError("Claude UI is only supported on macOS.")
+    if not CLAUDE_UI_APP_PATH.is_dir():
+        raise RuntimeError("Claude UI is not installed.")
+    _exec_harness("open", ["open", "-a", str(CLAUDE_UI_APP_PATH), str(workspace)])
+
+
+def ide_extension_hosts() -> tuple[tuple[str, Path, str], ...]:
+    """Return ``(binary, extensions_dir, uri_scheme)`` for VS Code-compatible IDEs."""
+    home = Path.home()
+    return (
+        ("cursor", home / ".cursor" / "extensions", "cursor"),
+        ("code", home / ".vscode" / "extensions", "vscode"),
+        ("code-insiders", home / ".vscode-insiders" / "extensions", "vscode-insiders"),
+    )
+
+
+def _has_ide_extension(extensions_dir: Path, extension_id: str) -> bool:
+    """Return whether ``extensions_dir`` contains ``extension_id``."""
+    try:
+        entries = list(extensions_dir.iterdir())
+    except OSError:
+        return False
+    prefix = f"{extension_id}-"
+    return any(
+        path.is_dir() and (path.name == extension_id or path.name.startswith(prefix))
+        for path in entries
+    )
+
+
+def _current_ide_binary() -> str | None:
+    """Return the IDE we are running inside, if it can host the Claude plugin.
+
+    ``CURSOR_AGENT`` is only set for Cursor's own agent process. A normal
+    integrated terminal still has Cursor's askpass and IPC paths, and reports
+    ``TERM_PROGRAM=vscode``.
+    """
+    if os.environ.get("CURSOR_AGENT") or os.environ.get("CURSOR_TRACE_ID"):
+        return "cursor"
+    if os.environ.get("CURSOR_CLI"):
+        return "cursor"
+    for name in (
+        "GIT_ASKPASS",
+        "VSCODE_GIT_ASKPASS_NODE",
+        "VSCODE_GIT_ASKPASS_MAIN",
+        "VSCODE_IPC_HOOK",
+    ):
+        value = os.environ.get(name, "").lower()
+        if "cursor.app" in value or "/application support/cursor/" in value:
+            return "cursor"
+    if os.environ.get("TERM_PROGRAM") == "vscode":
+        return "code"
+    return None
+
+
+def _claude_plugin_missing_message() -> str:
+    current = _current_ide_binary()
+    if current is not None:
+        return f"Claude Plugin is not installed in {IDE_PLUGIN_LABELS[current]}."
+    return "Claude Plugin is not installed in VS Code or Cursor."
+
+
+def missing_harness_message(agent: Agent) -> str:
+    """Return why ``agent`` cannot be launched on this machine."""
+    if agent.harness_name == "claude-plugin":
+        return _claude_plugin_missing_message()
+    if agent.harness_name == "claude-ui" and sys.platform != "darwin":
+        return "Claude UI is only supported on macOS."
+    return f"{agent.harness_display_name} is not installed or not on PATH."
+
+
+def _resolve_claude_plugin_host() -> tuple[str, str] | None:
+    """Return ``(binary, uri_scheme)`` for the Claude Code plugin in this context.
+
+    Inside Cursor, only the Cursor extension counts. A VS Code install is not
+    a fallback. Outside an IDE, VS Code wins if several hosts have it.
+    """
+    hosts = list(ide_extension_hosts())
+    current = _current_ide_binary()
+    if current is not None:
+        for binary, folder, scheme in hosts:
+            if binary != current:
+                continue
+            if _has_ide_extension(folder, CLAUDE_PLUGIN_EXTENSION):
+                return binary, scheme
+        return None
+    installed = [
+        (binary, scheme)
+        for binary, folder, scheme in hosts
+        if _has_ide_extension(folder, CLAUDE_PLUGIN_EXTENSION)
+    ]
+    if not installed:
+        return None
+    priority = {"code": 0, "code-insiders": 1, "cursor": 2}
+    return min(installed, key=lambda host: priority.get(host[0], 99))
+
+
+def _open_uri(uri: str) -> None:
+    """Open ``uri`` with the platform handler."""
+    if sys.platform == "darwin":
+        _exec_harness("open", ["open", uri])
+        return
+    if sys.platform == "win32":
+        _exec_harness("cmd", ["cmd", "/c", "start", "", uri])
+        return
+    _exec_harness("xdg-open", ["xdg-open", uri])
+
+
+def _open_workspace_in_ide(binary: str, workspace: Path) -> None:
+    """Ask a VS Code-compatible IDE to open ``workspace``."""
+    executable = shutil.which(binary)
+    if executable is None:
+        return
+    subprocess.run([executable, str(workspace)], check=False)
+
+
+def _launch_claude_plugin(workspace: Path, _model_id: str) -> None:
+    """Open the workspace, then the Claude Code panel, in a host IDE."""
+    host = _resolve_claude_plugin_host()
+    if host is None:
+        raise RuntimeError(_claude_plugin_missing_message())
+    binary, scheme = host
+    from skore_cli._style import console
+
+    console.print(
+        f"[skore.muted]  opening in[/] "
+        f"[skore.skill]{IDE_PLUGIN_LABELS.get(binary, binary)}[/]"
+    )
+    _open_workspace_in_ide(binary, workspace)
+    _open_uri(f"{scheme}://{CLAUDE_PLUGIN_EXTENSION}/open")
+
+
+def _resolve_cursor_cli_binary() -> str | None:
+    """Return ``cursor-agent``, or ``agent`` only when the path looks like Cursor."""
+    if shutil.which("cursor-agent") is not None:
+        return "cursor-agent"
+    agent = shutil.which("agent")
+    if agent is not None and "cursor" in agent.lower():
+        return "agent"
+    return None
+
+
+def _launch_cursor_cli(workspace: Path, _model_id: str) -> None:
+    """Start the Cursor CLI (``cursor-agent``, or ``agent`` when that is Cursor)."""
+    name = _resolve_cursor_cli_binary()
+    if name is None:
+        raise RuntimeError("Cursor CLI is not installed or not on PATH.")
+    previous = os.getcwd()
+    os.chdir(workspace)
+    try:
+        _exec_harness(name, [name])
+    except BaseException:
+        os.chdir(previous)
+        raise
+
+
 def _launch_pi(workspace: Path, model_id: str) -> None:
     env = os.environ.copy()
     env["PI_CODING_AGENT_DIR"] = str(workspace / ".pi" / "agent")
@@ -579,6 +746,45 @@ def _launch_copilot(workspace: Path, _model_id: str) -> None:
         "[skore.muted]in Copilot Chat (reload VS Code if it is missing).[/]"
     )
     _exec_harness(binary, [binary, str(workspace)])
+
+
+def _configure_copilot_cli(_ctx: HarnessContext) -> dict[str, Any]:
+    """Copilot CLI takes the Hub provider from the process environment at launch."""
+    from skore_cli._style import console
+
+    console.print(
+        "[skore.muted]Copilot CLI uses the Hub key from[/] [skore.path].skore[/] "
+        "[skore.muted]at launch; no extra project file is written.[/]"
+    )
+    return {}
+
+
+def _launch_copilot_cli(workspace: Path, model_id: str) -> None:
+    """Start ``copilot`` with the same provider env as ``skore-copilot cli``."""
+    from skore_cli.agent._skore_file import SkoreConfig
+
+    config = SkoreConfig.load(workspace)
+    if config is None or not config.api_key or not config.hub_url:
+        raise RuntimeError(
+            "missing .skore; run skore agent --harness copilot-cli first."
+        )
+    hub_url = config.hub_url
+    api_key = config.api_key
+    env = os.environ.copy()
+    env["COPILOT_PROVIDER_TYPE"] = "openai"
+    env["COPILOT_PROVIDER_BASE_URL"] = f"{hub_url.rstrip('/')}/v1"
+    env["COPILOT_PROVIDER_WIRE_API"] = "completions"
+    env["COPILOT_MODEL"] = model_id
+    env["COPILOT_PROVIDER_HEADERS"] = f"X-API-Key: {api_key}"
+    env["COPILOT_PROVIDER_MAX_OUTPUT_TOKENS"] = "8192"
+    env["COPILOT_PROVIDER_MAX_PROMPT_TOKENS"] = "200000"
+    previous = os.getcwd()
+    os.chdir(workspace)
+    try:
+        _exec_harness("copilot", ["copilot"], env=env)
+    except BaseException:
+        os.chdir(previous)
+        raise
 
 
 def _launch_codex(workspace: Path, model_id: str) -> None:
@@ -653,9 +859,26 @@ AGENTS: dict[str, Agent] = {
         user_skills_dir=".claude/skills",
         project_skills_dir=".claude/skills",
         harness_name="claude",
-        harness_label="Claude",
+        harness_label="Claude CLI",
+        harness_aliases=("claude-cli",),
         configure=_configure_claude,
         launch=_launch_claude,
+    ),
+    "claude-ui": Agent(
+        name="claude-ui",
+        label="Claude UI",
+        harness_name="claude-ui",
+        harness_label="Claude UI",
+        configure=_configure_claude,
+        launch=_launch_claude_ui,
+    ),
+    "claude-plugin": Agent(
+        name="claude-plugin",
+        label="Claude Plugin",
+        harness_name="claude-plugin",
+        harness_label="Claude Plugin",
+        configure=_configure_claude,
+        launch=_launch_claude_plugin,
     ),
     "cursor": Agent(
         name="cursor",
@@ -665,9 +888,19 @@ AGENTS: dict[str, Agent] = {
         user_skills_dir=".cursor/skills",
         project_skills_dir=".cursor/skills",
         harness_name="cursor",
-        harness_label="Cursor",
+        harness_label="Cursor IDE",
         configure=_configure_cursor,
         launch=_launch_cursor,
+    ),
+    "cursor-cli": Agent(
+        name="cursor-cli",
+        label="Cursor CLI",
+        env_var="CURSOR_CLI",
+        detection_priority=6,
+        harness_name="cursor-cli",
+        harness_label="Cursor CLI",
+        configure=_configure_cursor,
+        launch=_launch_cursor_cli,
     ),
     "codex": Agent(
         name="codex",
@@ -677,7 +910,7 @@ AGENTS: dict[str, Agent] = {
         user_skills_dir=".agents/skills",
         project_skills_dir=".agents/skills",
         harness_name="codex",
-        harness_label="Codex",
+        harness_label="Codex CLI",
         configure=_configure_codex,
         launch=_launch_codex,
     ),
@@ -741,6 +974,16 @@ AGENTS: dict[str, Agent] = {
         harness_binaries=COPILOT_BINARIES,
         configure=_configure_copilot,
         launch=_launch_copilot,
+    ),
+    "github-copilot-cli": Agent(
+        name="github-copilot-cli",
+        label="GitHub Copilot CLI",
+        harness_name="copilot-cli",
+        harness_label="Copilot CLI",
+        harness_binaries=COPILOT_CLI_BINARIES,
+        harness_aliases=("github-copilot-cli",),
+        configure=_configure_copilot_cli,
+        launch=_launch_copilot_cli,
     ),
     "bob": Agent(
         name="bob",
@@ -889,9 +1132,15 @@ def normalize_harness_name(name: str | None) -> str | None:
 
 
 def is_harness_installed(agent: Agent) -> bool:
-    """Return whether ``agent``'s harness executable is on ``PATH``."""
+    """Return whether the harness is on PATH or, on macOS, its app bundle."""
     if agent.harness_name == "bob-ide" and sys.platform == "darwin":
         return BOB_IDE_APP_PATH.is_dir()
+    if agent.harness_name == "claude-ui":
+        return sys.platform == "darwin" and CLAUDE_UI_APP_PATH.is_dir()
+    if agent.harness_name == "claude-plugin":
+        return _resolve_claude_plugin_host() is not None
+    if agent.harness_name == "cursor-cli":
+        return _resolve_cursor_cli_binary() is not None
     binaries = agent.harness_binaries or (
         (agent.harness_name,) if agent.harness_name else ()
     )
@@ -914,9 +1163,7 @@ def launch_harness(
     from skore_cli._style import console
 
     if not is_harness_installed(agent):
-        raise RuntimeError(
-            f"{agent.harness_display_name} is not installed or not on PATH."
-        )
+        raise RuntimeError(missing_harness_message(agent))
     if agent.launch is None:
         raise RuntimeError(f"{agent.name} has no harness launcher.")
     console.print(
