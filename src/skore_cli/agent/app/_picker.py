@@ -13,15 +13,14 @@ from skore_cli.skills.app._widgets import AutoRadioSet
 
 _HARNESS_INTRO = (
     "Choose the agent harness to launch.\n"
-    "Detected harnesses are listed first. Others are listed below.\n"
     "[reverse] ↑/↓ [/] choose  [reverse] Enter [/] confirm  [reverse] ? [/] help"
 )
 
 _HARNESS_HELP = """\
 Pick the local coding agent to configure and launch.
 
-Detected harnesses are listed first. Harnesses that are not
-installed on this machine are listed after them.
+Detected harnesses are listed under Detected.
+Harnesses that are not installed are listed under Other.
 
 Supported harnesses:
   • Bob Shell    — writes .bob/mcp.json
@@ -86,6 +85,15 @@ class HarnessPicker(App[str | None]):
         margin: 1 1;
         width: 100%;
     }
+    AutoRadioSet > .harness-group {
+        color: $text-muted;
+        text-style: bold;
+        height: auto;
+        margin: 1 0 0 0;
+    }
+    AutoRadioSet > .harness-group:first-child {
+        margin-top: 0;
+    }
     """
 
     BINDINGS = [
@@ -111,24 +119,45 @@ class HarnessPicker(App[str | None]):
             yield SkoreBanner()
             yield Label(_HARNESS_INTRO, classes="picker-intro")
             with AutoRadioSet(id="harnesses"):
-                for index, (_, label, detected) in enumerate(self._harnesses):
-                    suffix = "(detected)" if detected else "(not detected)"
-                    text = f"{label}  {suffix}"
-                    yield RadioButton(text, value=index == self._preselect)
+                for title, entries in self._sections():
+                    yield Label(f"{title}:", classes="harness-group", disabled=True)
+                    for name, label in entries:
+                        yield RadioButton(label, name=name)
         yield Footer()
 
+    def _sections(self) -> list[tuple[str, list[tuple[str, str]]]]:
+        detected = [
+            (name, label) for name, label, found in self._harnesses if found
+        ]
+        other = [
+            (name, label) for name, label, found in self._harnesses if not found
+        ]
+        sections = []
+        if detected:
+            sections.append(("Detected", detected))
+        if other:
+            sections.append(("Other", other))
+        return sections
+
     def on_mount(self) -> None:
-        self.query_one("#harnesses", AutoRadioSet).select_index(self._preselect)
+        radio = self.query_one("#harnesses", AutoRadioSet)
+        if not self._harnesses:
+            return
+        target = self._harnesses[self._preselect][0]
+        for index, child in enumerate(radio.children):
+            if isinstance(child, RadioButton) and child.name == target:
+                radio.select_index(index)
+                return
 
     def action_show_help(self) -> None:
         self.push_screen(HelpScreen("Choose a harness", _HARNESS_HELP))
 
     def action_confirm(self) -> None:
-        index = self.query_one("#harnesses", AutoRadioSet).pressed_index
-        if index < 0:
+        pressed = self.query_one("#harnesses", AutoRadioSet).pressed_button
+        if pressed is None or not pressed.name:
             self.notify("Select a harness.", severity="warning")
             return
-        self.result = self._harnesses[index][0]
+        self.result = pressed.name
         self.exit()
 
     def action_cancel(self) -> None:

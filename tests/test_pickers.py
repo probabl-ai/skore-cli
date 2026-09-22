@@ -8,7 +8,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import RadioButton, SelectionList
 
 from skore_cli.agent.app import HarnessPicker, WorkspacePicker
-from skore_cli.agent.app._picker import _HARNESS_HELP, _HARNESS_INTRO
+from skore_cli.agent.app._picker import _HARNESS_HELP
 from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpInput, HelpScreen
 from skore_cli.skills.app import (
@@ -44,17 +44,15 @@ async def test_textual_apps_show_banner():
 # --------------------------------------------------------------------------- #
 
 
-async def test_harness_picker_marks_detected_and_undetected():
+async def test_harness_picker_splits_detected_and_other():
     app = HarnessPicker(HARNESSES, preselect=0)
     async with app.run_test() as pilot:
         await pilot.pause()
+        headings = [str(label.content) for label in app.query(".harness-group")]
         labels = [str(button.label) for button in app.query(RadioButton)]
 
-    assert labels == [
-        "OpenCode  (detected)",
-        "Claude  (not detected)",
-        "Pi  (not detected)",
-    ]
+    assert headings == ["Detected:", "Other:"]
+    assert labels == ["OpenCode", "Claude", "Pi"]
 
 
 async def test_harness_picker_confirms_preselected():
@@ -90,7 +88,7 @@ async def test_harness_picker_cancel_returns_none():
 def test_harness_picker_requires_selection(monkeypatch):
     app = HarnessPicker(HARNESSES)
     notifications = []
-    radio = SimpleNamespace(pressed_index=-1)
+    radio = SimpleNamespace(pressed_button=None)
 
     monkeypatch.setattr(app, "query_one", lambda *_: radio)
     monkeypatch.setattr(
@@ -103,8 +101,8 @@ def test_harness_picker_requires_selection(monkeypatch):
 
 
 def test_harness_picker_copy_lists_all_harnesses():
-    assert "detected harnesses are listed first" in _HARNESS_INTRO.lower()
-    assert "listed after them" in _HARNESS_HELP.lower()
+    assert "under Detected" in _HARNESS_HELP
+    assert "under Other" in _HARNESS_HELP
     assert "Claude CLI" in _HARNESS_HELP
     assert "Claude UI" in _HARNESS_HELP
     assert "Claude Plugin" in _HARNESS_HELP
