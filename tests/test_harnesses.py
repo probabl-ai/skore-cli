@@ -520,14 +520,14 @@ def test_launch_exports_sdk_uri_from_skore_file(tmp_path, monkeypatch):
     assert "SKORE_HUB_API_KEY" not in captured["env"]
 
 
-def test_launch_overwrites_sdk_uri_from_skore_file(tmp_path, monkeypatch):
+def test_launch_keeps_existing_sdk_uri(tmp_path, monkeypatch):
     captured = _prepare_claude_launch(tmp_path, monkeypatch)
     _write_skore_file(tmp_path)
     monkeypatch.setenv("SKORE_HUB_URI", "http://user.hub")
 
     _agents.launch_harness(AGENTS["claude-code"], tmp_path)
 
-    assert captured["env"]["SKORE_HUB_URI"] == "http://hub.test"
+    assert captured["env"]["SKORE_HUB_URI"] == "http://user.hub"
 
 
 def test_launch_exports_nothing_without_a_skore_file(tmp_path, monkeypatch):

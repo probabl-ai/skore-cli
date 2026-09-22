@@ -164,13 +164,24 @@ def agent(
         raise click.ClickException(f"workspace does not exist: {workspace}")
 
     config = SkoreConfig.load(workspace)
+
     if hub_url:
         os.environ["SKORE_HUB_URI"] = hub_url
+
+        if config is not None:
+            from skore._plugins.hub.authentication import URI
+
+            config = SkoreConfig(
+                hub_url=URI(),
+                workspace=config.workspace,
+                workspace_id=config.workspace_id,
+                harness=config.harness,
+            )
 
     if config is not None and config.workspace:
         harness_name = harness_name or config.harness
     else:
-        from skore._plugins.hub.authentication.uri import URI
+        from skore._plugins.hub.authentication import URI
 
         resolved_hub_url = URI()
         token = login(timeout=login_timeout)

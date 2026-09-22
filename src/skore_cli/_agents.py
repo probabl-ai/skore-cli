@@ -904,5 +904,6 @@ def launch_harness(
     )
     from skore_cli.agent._skore_file import SkoreConfig
 
-    SkoreConfig.load(workspace)
+    if "SKORE_HUB_URI" not in os.environ:
+        SkoreConfig.load(workspace)
     agent.launch(workspace, model_id)
