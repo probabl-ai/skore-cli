@@ -174,14 +174,19 @@ def test_sync_transfers_between_real_local_projects(tmp_path):
     assert destination.summarize().frame()["key"].tolist() == ["model"]
 
 
-def test_sync_requires_hub_api_key():
+def test_sync_hub_does_not_require_env_api_key(projects):
+    created = projects
+
     result = CliRunner().invoke(
         sync,
         ["experiment", "--to=hub", "--to-workspace=team"],
     )
 
-    assert result.exit_code != 0
-    assert "SKORE_HUB_API_KEY" in result.output
+    assert result.exit_code == 0, result.output
+    assert [(project.name, project.mode, project.workspace) for project in created] == [
+        ("experiment", "local", None),
+        ("experiment", "hub", "team"),
+    ]
 
 
 def test_sync_reports_empty_result(capsys):

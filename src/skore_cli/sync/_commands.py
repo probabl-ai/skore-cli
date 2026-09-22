@@ -9,7 +9,6 @@ from typing import Any
 import rich_click as click
 
 MODES = ("local", "hub", "mlflow")
-API_KEY_ENV = "SKORE_HUB_API_KEY"
 
 
 def _endpoint_options(
@@ -114,8 +113,6 @@ def sync(
     uses_hub = "hub" in (source_mode, destination_mode)
     if hub_url is not None and not uses_hub:
         raise click.UsageError("--hub-url requires a Hub endpoint.")
-    if uses_hub and not os.environ.get(API_KEY_ENV):
-        raise click.ClickException(f"Hub synchronization requires {API_KEY_ENV}.")
 
     from skore import Project
 
