@@ -7,10 +7,9 @@ import os
 import rich_click as click
 from rich.table import Table
 
-from skore_cli._hub_auth import ensure_login
 from skore_cli._style import console
-
-from . import _client
+from skore_cli.hub import _client
+from skore_cli.hub.login import login
 
 click.rich_click.COMMAND_GROUPS = {
     **getattr(click.rich_click, "COMMAND_GROUPS", {}),
@@ -40,14 +39,14 @@ def hub(ctx) -> None:
 
 def _registry():
     """Return ``skore``'s API-key registry."""
-    from skore._plugins.hub.authentication import registry
+    from skore._plugins.hub.authentication.api_key import registry
 
     return registry
 
 
 def _host(host: str | None) -> str:
     """Return ``host``, or skore's ``URI()`` when ``host`` is omitted."""
-    from skore._plugins.hub.authentication import URI
+    from skore._plugins.hub.authentication.uri import URI
 
     return host or URI()
 
@@ -135,15 +134,15 @@ def generate(
     if host:
         os.environ["SKORE_HUB_URI"] = host
     hub_url = _host(host)
-    token = ensure_login(timeout=login_timeout)
-    user_id, memberships = _client.me(hub_url, token)
+    token = login(timeout=login_timeout)
+    user_id, memberships = _client.me(hub_url, token.access)
     if not memberships:
         raise click.ClickException(
             "you are not a member of any hub workspace; create or join one first."
         )
     membership = _membership_for(memberships, workspace)
     secret = _create_workspace_api_key(
-        hub_url, token, user_id, membership, name or workspace
+        hub_url, token.access, user_id, membership, name or workspace
     )
     _registry().set(host=hub_url, workspace=workspace, api_key=secret)
     console.print(

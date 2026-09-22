@@ -223,7 +223,9 @@ def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):
 
 def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
+    )
     monkeypatch.setattr(
         _commands._client,
         "me",
@@ -258,7 +260,9 @@ def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(
     and stored under the canonical ``bob-ide`` name."""
     monkeypatch.setattr(_agents.sys, "platform", "linux")
     _mock_harness_on_path(monkeypatch, "bobide")
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
+    )
     monkeypatch.setattr(
         _commands._client,
         "me",
@@ -284,7 +288,9 @@ def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(
 
 def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
+    )
     monkeypatch.setattr(
         _commands._client,
         "me",
@@ -300,7 +306,9 @@ def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
 
 def test_agent_generates_api_key_when_none_is_stored(tmp_path, monkeypatch):
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
+    )
     monkeypatch.setattr(
         _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
     )
@@ -355,20 +363,6 @@ def test_is_non_interactive_without_tty(monkeypatch):
     monkeypatch.setattr(_agents.sys, "stdin", SimpleNamespace(isatty=lambda: True))
     monkeypatch.setattr(_agents.sys, "stdout", SimpleNamespace(isatty=lambda: False))
     assert _commands.is_non_interactive() is True
-
-
-# --------------------------------------------------------------------------- #
-# _ensure_login
-# --------------------------------------------------------------------------- #
-
-
-def test_ensure_login_delegates_to_hub_auth(monkeypatch):
-    seen = {}
-    monkeypatch.setattr(
-        _commands, "ensure_login", lambda *, timeout: seen.setdefault("t", timeout)
-    )
-    _commands._ensure_login("http://hub.test", timeout=42)
-    assert seen["t"] == 42
 
 
 # --------------------------------------------------------------------------- #
@@ -464,7 +458,9 @@ def test_resolve_membership_multiple_interactive_picks(monkeypatch):
 
 
 def test_agent_no_memberships_errors(tmp_path, monkeypatch):
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
+    )
     monkeypatch.setattr(_commands._client, "me", lambda hub_url, token: ("user-1", []))
 
     result = CliRunner().invoke(
@@ -530,7 +526,9 @@ def test_agent_valid_config_without_harness_picks_interactively(tmp_path, monkey
 
 def test_agent_first_run_picks_harness_interactively(tmp_path, monkeypatch):
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
+    )
     monkeypatch.setattr(
         _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
     )
@@ -591,7 +589,9 @@ def test_agent_non_interactive_auto_selects_claude(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("CLAUDECODE", "1")
     _mock_harness_on_path(monkeypatch, "claude")
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
+    )
     monkeypatch.setattr(
         _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
     )
@@ -618,7 +618,9 @@ def test_agent_non_interactive_auto_selects_opencode(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("OPENCODE_CLIENT", "1")
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
+    )
     monkeypatch.setattr(
         _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
     )
@@ -644,7 +646,9 @@ def test_agent_non_interactive_auto_selects_pi(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("PI_CODING_AGENT", "true")
     _mock_harness_on_path(monkeypatch, "pi")
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
+    )
     monkeypatch.setattr(
         _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
     )
@@ -672,7 +676,9 @@ def test_agent_non_interactive_detected_harness_not_on_path_errors(
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setattr(_agents.shutil, "which", lambda cmd: None)
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
+    )
     monkeypatch.setattr(
         _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
     )
