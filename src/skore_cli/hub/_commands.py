@@ -39,14 +39,14 @@ def hub(ctx) -> None:
 
 def _registry():
     """Return ``skore``'s API-key registry."""
-    from skore._plugins.hub.authentication.api_key import registry
+    from skore._plugins.hub.authentication import registry
 
     return registry
 
 
 def _host(host: str | None) -> str:
     """Return ``host``, or skore's ``URI()`` when ``host`` is omitted."""
-    from skore._plugins.hub.authentication.uri import URI
+    from skore._plugins.hub.authentication import URI
 
     return host or URI()
 

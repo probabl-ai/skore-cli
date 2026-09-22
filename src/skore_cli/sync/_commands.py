@@ -12,18 +12,6 @@ MODES = ("local", "hub", "mlflow")
 API_KEY_ENV = "SKORE_HUB_API_KEY"
 
 
-def _project_api():
-    """Import the public project API only when synchronization runs."""
-    import skore
-
-    if not hasattr(skore.Project, "sync"):
-        raise click.ClickException(
-            "synchronization requires `skore>=0.24.0`; upgrade it with "
-            "`pip install --upgrade skore`."
-        )
-    return skore.Project, skore.login
-
-
 def _endpoint_options(
     mode: str,
     *,
@@ -129,12 +117,11 @@ def sync(
     if uses_hub and not os.environ.get(API_KEY_ENV):
         raise click.ClickException(f"Hub synchronization requires {API_KEY_ENV}.")
 
+    from skore import Project
+
     try:
-        Project, login = _project_api()
-        if uses_hub:
-            if hub_url:
-                os.environ["SKORE_HUB_URI"] = hub_url
-            login(mode="hub")
+        if uses_hub and hub_url:
+            os.environ["SKORE_HUB_URI"] = hub_url
         source = Project(source_project, mode=source_mode, **source_options)
         destination = Project(
             destination_project,
