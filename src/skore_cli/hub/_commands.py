@@ -29,7 +29,7 @@ def hub(ctx) -> None:
 
 def _registry():
     """Import ``skore``'s API-key registry, or fail if ``skore`` is missing."""
-    return _auth("api_key").registry
+    return _auth("registry")
 
 
 def _host(host: str | None) -> str:
