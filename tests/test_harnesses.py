@@ -580,6 +580,52 @@ def test_current_ide_is_cursor_from_askpass_without_cursor_agent(monkeypatch):
     assert _agents._current_ide_binary() == "cursor"
 
 
+@pytest.mark.parametrize(
+    "askpass",
+    [
+        "/usr/share/cursor/resources/app/extensions/git/dist/askpass.sh",
+        "/home/dev/.local/share/cursor/resources/app/extensions/git/dist/askpass.sh",
+        (
+            "C:/Users/dev/AppData/Local/Programs/cursor"
+            "/resources/app/extensions/git/dist/askpass.sh"
+        ),
+        "/Users/dev/Library/Application Support/Cursor/User/globalStorage/askpass.sh",
+        (
+            r"C:\Users\dev\AppData\Local\Programs\cursor"
+            r"\resources\app\extensions\git\dist\askpass.sh"
+        ),
+        (
+            r"C:\Users\dev\AppData\Roaming\Cursor"
+            r"\User\globalStorage\askpass.sh"
+        ),
+    ],
+)
+def test_current_ide_is_cursor_from_install_path(monkeypatch, askpass):
+    monkeypatch.setenv("TERM_PROGRAM", "vscode")
+    monkeypatch.setenv("GIT_ASKPASS", askpass)
+    assert _agents._current_ide_binary() == "cursor"
+
+
+@pytest.mark.parametrize(
+    "askpass",
+    [
+        "/usr/share/code/resources/app/extensions/git/dist/askpass.sh",
+        (
+            r"C:\Users\dev\AppData\Local\Programs\Microsoft VS Code"
+            r"\resources\app\extensions\git\dist\askpass.sh"
+        ),
+        (
+            r"C:\Users\cursor\AppData\Local\Programs\Microsoft VS Code"
+            r"\resources\app\extensions\git\dist\askpass.sh"
+        ),
+    ],
+)
+def test_current_ide_ignores_vscode_askpass_path(monkeypatch, askpass):
+    monkeypatch.setenv("TERM_PROGRAM", "vscode")
+    monkeypatch.setenv("GIT_ASKPASS", askpass)
+    assert _agents._current_ide_binary() == "code"
+
+
 def test_current_ide_is_vscode_from_term_program(monkeypatch):
     monkeypatch.setenv("TERM_PROGRAM", "vscode")
     assert _agents._current_ide_binary() == "code"

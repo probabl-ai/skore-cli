@@ -555,6 +555,20 @@ def _has_ide_extension(extensions_dir: Path, extension_id: str) -> bool:
     )
 
 
+def _path_is_cursor(value: str) -> bool:
+    """Return whether an IDE path points at Cursor on macOS, Windows, or Linux."""
+    normalized = "/" + value.replace("\\", "/").lower() + "/"
+    return any(
+        marker in normalized
+        for marker in (
+            "/cursor.app/",
+            "/cursor/resources/",
+            "/application support/cursor/",
+            "/roaming/cursor/",
+        )
+    )
+
+
 def _current_ide_binary() -> str | None:
     """Return the IDE we are running inside, if it can host the Claude plugin.
 
@@ -562,9 +576,11 @@ def _current_ide_binary() -> str | None:
     integrated terminal still has Cursor's askpass and IPC paths, and reports
     ``TERM_PROGRAM=vscode``.
     """
-    if os.environ.get("CURSOR_AGENT") or os.environ.get("CURSOR_TRACE_ID"):
-        return "cursor"
-    if os.environ.get("CURSOR_CLI"):
+    if (
+        os.environ.get("CURSOR_AGENT")
+        or os.environ.get("CURSOR_TRACE_ID")
+        or os.environ.get("CURSOR_CLI")
+    ):
         return "cursor"
     for name in (
         "GIT_ASKPASS",
@@ -572,8 +588,7 @@ def _current_ide_binary() -> str | None:
         "VSCODE_GIT_ASKPASS_MAIN",
         "VSCODE_IPC_HOOK",
     ):
-        value = os.environ.get(name, "").lower()
-        if "cursor.app" in value or "/application support/cursor/" in value:
+        if _path_is_cursor(os.environ.get(name, "")):
             return "cursor"
     if os.environ.get("TERM_PROGRAM") == "vscode":
         return "code"
