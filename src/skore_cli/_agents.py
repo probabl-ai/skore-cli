@@ -577,17 +577,17 @@ def _installed_claude_plugin_hosts() -> list[tuple[str, str]]:
     ]
 
 
-def _prompt_ide_label(prompt: str, labels: list[str]) -> str:
-    """Ask which of ``labels`` to use."""
+def _prompt_ide(options: list[tuple[str, str]]) -> str:
+    """Ask which IDE to open. ``options`` are ``(binary, label)`` pairs."""
     import rich_click as click
 
-    return str(
-        click.prompt(
-            prompt,
-            type=click.Choice(labels, case_sensitive=False),
-            show_choices=True,
-        )
-    )
+    from skore_cli.agent.app import IdePicker
+
+    app = IdePicker(options)
+    app.run()
+    if app.result is None:
+        raise click.Abort()
+    return app.result
 
 
 def _format_ide_list(labels: list[str]) -> str:
@@ -597,24 +597,57 @@ def _format_ide_list(labels: list[str]) -> str:
     return f"{', '.join(labels[:-1])}, and {labels[-1]}"
 
 
-def _choose_claude_plugin_host() -> tuple[str, str]:
+def claude_plugin_ide(name: str | None) -> str | None:
+    """Return the IDE binary encoded in ``claude-plugin-{ide}``."""
+    prefix = "claude-plugin-"
+    if not name or not name.startswith(prefix):
+        return None
+    binary = name.removeprefix(prefix)
+    if binary in IDE_PLUGIN_LABELS:
+        return binary
+    return None
+
+
+def claude_plugin_ide_ready(name: str | None) -> bool:
+    """Return whether the IDE named in ``claude-plugin-{ide}`` has the plugin."""
+    ide = claude_plugin_ide(name)
+    if ide is None:
+        return False
+    return any(binary == ide for binary, _scheme in _installed_claude_plugin_hosts())
+
+
+def _choose_claude_plugin_host(preferred: str | None = None) -> tuple[str, str]:
     """Return the IDE to open, asking when more than one has the plugin."""
     hosts = _installed_claude_plugin_hosts()
     if not hosts:
         raise RuntimeError(_claude_plugin_missing_message())
+    if preferred is not None:
+        for host in hosts:
+            if host[0] == preferred:
+                return host
+        raise RuntimeError(_claude_plugin_missing_message())
     if len(hosts) == 1:
         return hosts[0]
-    labels = [IDE_PLUGIN_LABELS.get(binary, binary) for binary, _scheme in hosts]
+    options = [
+        (binary, IDE_PLUGIN_LABELS.get(binary, binary)) for binary, _scheme in hosts
+    ]
     if is_non_interactive():
         raise RuntimeError(
             "Claude Plugin is installed in "
-            f"{_format_ide_list(labels)}. Run interactively to choose an IDE."
+            f"{_format_ide_list([label for _, label in options])}. "
+            "Run interactively to choose an IDE."
         )
-    chosen = _prompt_ide_label("Open Claude Plugin in", labels)
-    for host, label in zip(hosts, labels, strict=True):
-        if label.lower() == chosen.lower():
+    chosen = _prompt_ide(options)
+    for host in hosts:
+        if host[0] == chosen:
             return host
     raise RuntimeError(f"Unknown IDE: {chosen}")
+
+
+def resolve_claude_plugin_harness(name: str) -> str:
+    """Return ``claude-plugin-{ide}`` for a Claude plugin harness name."""
+    binary, _scheme = _choose_claude_plugin_host(claude_plugin_ide(name))
+    return f"claude-plugin-{binary}"
 
 
 def _open_uri(uri: str) -> None:
@@ -638,7 +671,11 @@ def _open_workspace_in_ide(binary: str, workspace: Path) -> None:
 
 def _launch_claude_plugin(workspace: Path, _model_id: str) -> None:
     """Open the workspace, then the Claude Code panel, in a host IDE."""
-    binary, scheme = _choose_claude_plugin_host()
+    from skore_cli.agent._skore_file import SkoreConfig
+
+    config = SkoreConfig.load(workspace)
+    preferred = claude_plugin_ide(config.harness) if config is not None else None
+    binary, scheme = _choose_claude_plugin_host(preferred)
     from skore_cli._style import console
 
     console.print(
@@ -1009,6 +1046,11 @@ SKILL_AGENT_NAMES = [
 HARNESS_NAMES = [
     agent.harness_name for agent in AGENTS.values() if agent.harness_name is not None
 ]
+# ``--harness claude-plugin-{ide}`` selects that IDE and is stored as-is.
+# It is not a picker row and not an alias: aliases collapse to the canonical name.
+CLAUDE_PLUGIN_IDE_CHOICES = tuple(
+    f"claude-plugin-{binary}" for binary in IDE_PLUGIN_LABELS
+)
 # Canonical harness names plus their aliases (e.g. ``bobide`` for Bob IDE, the
 # command it installs). Accepted by ``--harness``; still stored as the canonical
 # name in ``.skore``.
@@ -1016,7 +1058,11 @@ HARNESS_CHOICES = [
     name
     for agent in AGENTS.values()
     if agent.harness_name is not None
-    for name in (agent.harness_name, *agent.harness_aliases)
+    for name in (
+        (agent.harness_name, *CLAUDE_PLUGIN_IDE_CHOICES, *agent.harness_aliases)
+        if agent.harness_name == "claude-plugin"
+        else (agent.harness_name, *agent.harness_aliases)
+    )
 ]
 
 
@@ -1103,6 +1149,8 @@ def resolve_targets(
 
 def get_harness(name: str) -> Agent:
     """Return the agent that provides the named harness."""
+    if claude_plugin_ide(name):
+        name = "claude-plugin"
     for agent in AGENTS.values():
         if agent.harness_name == name:
             return agent

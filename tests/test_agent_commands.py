@@ -237,6 +237,140 @@ def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     assert ".skore" in (tmp_path / ".gitignore").read_text().splitlines()
 
 
+def test_agent_saves_claude_plugin_ide(tmp_path, monkeypatch):
+    cursor = tmp_path / "cursor"
+    vscode = tmp_path / "vscode"
+    (cursor / "anthropic.claude-code-1.0.0").mkdir(parents=True)
+    (vscode / "anthropic.claude-code-1.0.0").mkdir(parents=True)
+    monkeypatch.setattr(
+        _agents,
+        "ide_extension_hosts",
+        lambda: (
+            ("cursor", cursor, "cursor"),
+            ("code", vscode, "vscode"),
+        ),
+    )
+    monkeypatch.setattr(_agents, "is_non_interactive", lambda: False)
+    monkeypatch.setattr(_agents, "_prompt_ide", lambda options: "cursor")
+    monkeypatch.setattr(
+        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
+    )
+    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands._client,
+        "me",
+        lambda hub_url, token: ("user-1", [_membership()]),
+    )
+    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
+    monkeypatch.setattr(
+        _commands._client,
+        "create_api_key",
+        lambda *a, **k: (42, "new-secret"),
+    )
+    monkeypatch.setattr(
+        _commands,
+        "launch_harness",
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
+    )
+
+    result = CliRunner().invoke(
+        agent,
+        ["--workspace", str(tmp_path), "--harness", "claude-plugin"],
+    )
+
+    assert result.exit_code == 0, result.output
+    saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert saved["harness"] == "claude-plugin-cursor"
+
+
+def test_agent_claude_plugin_ide_flag_skips_the_menu(tmp_path, monkeypatch):
+    cursor = tmp_path / "cursor"
+    vscode = tmp_path / "vscode"
+    (cursor / "anthropic.claude-code-1.0.0").mkdir(parents=True)
+    (vscode / "anthropic.claude-code-1.0.0").mkdir(parents=True)
+    monkeypatch.setattr(
+        _agents,
+        "ide_extension_hosts",
+        lambda: (
+            ("cursor", cursor, "cursor"),
+            ("code", vscode, "vscode"),
+        ),
+    )
+    prompted: list[object] = []
+    monkeypatch.setattr(
+        _agents, "_prompt_ide", lambda options: prompted.append(options)
+    )
+    monkeypatch.setattr(
+        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
+    )
+    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands._client,
+        "me",
+        lambda hub_url, token: ("user-1", [_membership()]),
+    )
+    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
+    monkeypatch.setattr(
+        _commands._client,
+        "create_api_key",
+        lambda *a, **k: (42, "new-secret"),
+    )
+    monkeypatch.setattr(
+        _commands,
+        "launch_harness",
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
+    )
+
+    result = CliRunner().invoke(
+        agent,
+        ["--workspace", str(tmp_path), "--harness", "claude-plugin-cursor"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert prompted == []
+    saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert saved["harness"] == "claude-plugin-cursor"
+
+
+def test_agent_reuses_saved_claude_plugin_ide(tmp_path, monkeypatch):
+    cursor = tmp_path / "cursor"
+    vscode = tmp_path / "vscode"
+    (cursor / "anthropic.claude-code-1.0.0").mkdir(parents=True)
+    (vscode / "anthropic.claude-code-1.0.0").mkdir(parents=True)
+    _write_skore(tmp_path, harness="claude-plugin-cursor")
+    monkeypatch.setattr(
+        _agents,
+        "ide_extension_hosts",
+        lambda: (
+            ("cursor", cursor, "cursor"),
+            ("code", vscode, "vscode"),
+        ),
+    )
+    prompted: list[object] = []
+    monkeypatch.setattr(
+        _agents, "_prompt_ide", lambda options: prompted.append(options)
+    )
+    monkeypatch.setattr(
+        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
+    )
+    launched: list[str | None] = []
+    monkeypatch.setattr(
+        _commands,
+        "launch_harness",
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: launched.append(
+            selected.harness_name
+        ),
+    )
+
+    result = CliRunner().invoke(agent, ["--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert prompted == []
+    assert launched == ["claude-plugin"]
+    saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert saved["harness"] == "claude-plugin-cursor"
+
+
 def test_agent_accepts_claude_cli_alias(tmp_path, monkeypatch):
     _write_skore(tmp_path, harness="opencode")
     _mock_harness_on_path(monkeypatch, "claude")

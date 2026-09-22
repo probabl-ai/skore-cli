@@ -626,7 +626,7 @@ def test_open_workspace_in_ide_skips_missing_binary(tmp_path, monkeypatch):
 
 def test_launch_claude_plugin_errors_when_host_missing(tmp_path):
     with pytest.raises(RuntimeError, match="Claude Plugin is not installed"):
-        _agents._launch_claude_plugin(tmp_path, "skore-agent")
+        _agents.launch_harness(AGENTS["claude-plugin"], tmp_path)
 
 
 def test_launch_cursor_cli_errors_when_binary_missing(tmp_path):
@@ -712,8 +712,8 @@ def test_claude_plugin_opens_the_only_installed_ide(tmp_path, monkeypatch):
     prompted: list[object] = []
     monkeypatch.setattr(
         _agents,
-        "_prompt_ide_label",
-        lambda prompt, labels: prompted.append((prompt, labels)),
+        "_prompt_ide",
+        lambda options: prompted.append(options),
     )
     monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
     assert is_harness_installed(AGENTS["claude-plugin"]) is True
@@ -747,16 +747,63 @@ def test_launch_claude_plugin_prompts_when_several_ides(tmp_path, monkeypatch):
         "run",
         lambda argv, check=False: opened.append(list(argv)),
     )
-    prompts: list[tuple[str, list[str]]] = []
+    prompts: list[list[tuple[str, str]]] = []
 
-    def fake_prompt(prompt, labels):
-        prompts.append((prompt, list(labels)))
-        return "Cursor"
+    def fake_prompt(options):
+        prompts.append(list(options))
+        return "cursor"
 
-    monkeypatch.setattr(_agents, "_prompt_ide_label", fake_prompt)
+    monkeypatch.setattr(_agents, "_prompt_ide", fake_prompt)
     monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
     _agents.launch_harness(AGENTS["claude-plugin"], tmp_path)
-    assert prompts == [("Open Claude Plugin in", ["Cursor", "VS Code"])]
+    assert prompts == [[("cursor", "Cursor"), ("code", "VS Code")]]
+    assert opened == [["/usr/bin/cursor", str(tmp_path)]]
+    assert captured["argv"] == ["open", "cursor://anthropic.claude-code/open"]
+
+
+def test_launch_claude_plugin_reuses_saved_ide(tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    (tmp_path / ".skore").write_text(
+        json.dumps(
+            {
+                "hub_url": "http://hub.test",
+                "workspace": "ws-1",
+                "workspace_id": 1,
+                "api_key": "secret-key",
+                "harness": "claude-plugin-cursor",
+            }
+        )
+        + "\n"
+    )
+    monkeypatch.setattr(_agents.sys, "platform", "darwin")
+    monkeypatch.setattr(_agents, "is_non_interactive", lambda: False)
+    monkeypatch.setattr(
+        _agents,
+        "ide_extension_hosts",
+        lambda: _plugin_hosts(tmp_path, "cursor", "code"),
+    )
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda cmd: f"/usr/bin/{cmd}" if cmd in {"cursor", "code"} else None,
+    )
+    opened: list[list[str]] = []
+    monkeypatch.setattr(
+        _agents.subprocess,
+        "run",
+        lambda argv, check=False: opened.append(list(argv)),
+    )
+    prompted: list[object] = []
+    monkeypatch.setattr(
+        _agents, "_prompt_ide", lambda options: prompted.append(options)
+    )
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    _agents.launch_harness(AGENTS["claude-plugin"], tmp_path)
+    assert prompted == []
     assert opened == [["/usr/bin/cursor", str(tmp_path)]]
     assert captured["argv"] == ["open", "cursor://anthropic.claude-code/open"]
 

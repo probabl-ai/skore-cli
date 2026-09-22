@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from textual.app import App, ComposeResult
 from textual.widgets import RadioButton, SelectionList
 
-from skore_cli.agent.app import HarnessPicker, WorkspacePicker
+from skore_cli.agent.app import HarnessPicker, IdePicker, WorkspacePicker
 from skore_cli.agent.app._picker import _HARNESS_HELP
 from skore_cli.app._banner import SkoreBanner
 from skore_cli.app._help import HELP_BINDING, HelpInput, HelpScreen
@@ -23,12 +23,14 @@ HARNESSES = [
 ]
 
 WORKSPACES = [("ws-1", "First"), ("ws-2", "Second")]
+IDES = [("cursor", "Cursor"), ("code", "VS Code")]
 
 
 async def test_textual_apps_show_banner():
     apps = [
         HarnessPicker(HARNESSES),
         WorkspacePicker(WORKSPACES),
+        IdePicker(IDES),
         InstalledSkillsPicker(["alpha"], title="Update skills"),
         ProbablSkillsInstaller(agent=(), default_global=False),
     ]
@@ -182,6 +184,43 @@ async def test_workspace_picker_help_screen():
         await pilot.pause()
 
         assert isinstance(app.screen, HelpScreen)
+
+
+# --------------------------------------------------------------------------- #
+# IdePicker
+# --------------------------------------------------------------------------- #
+
+
+async def test_ide_picker_confirms_selection():
+    app = IdePicker(IDES, preselect=0)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        labels = [str(button.label) for button in app.query(RadioButton)]
+        await pilot.press("enter")
+        await pilot.pause()
+
+    assert labels == ["Cursor", "VS Code"]
+    assert app.result == "cursor"
+
+
+async def test_ide_picker_honors_preselect():
+    app = IdePicker(IDES, preselect=1)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+    assert app.result == "code"
+
+
+async def test_ide_picker_cancel_returns_none():
+    app = IdePicker(IDES, preselect=0)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+
+    assert app.result is None
 
 
 # --------------------------------------------------------------------------- #

@@ -231,3 +231,88 @@ class WorkspacePicker(App[str | None]):
     def action_cancel(self) -> None:
         self.result = None
         self.exit()
+
+
+_IDE_INTRO = (
+    "Open Claude Plugin in:\n"
+    "[reverse] ↑/↓ [/] choose  [reverse] Enter [/] confirm  [reverse] ? [/] help"
+)
+
+_IDE_HELP = """\
+Pick the IDE that should open the Claude Code panel.
+
+Only IDEs that have the Claude plugin installed are listed.
+
+Keys:
+  ↑/↓     move selection
+  Enter   confirm
+  Esc     cancel
+  ?       show this help
+"""
+
+
+class IdePicker(App[str | None]):
+    """Pick the IDE that should open the Claude plugin."""
+
+    CSS = """
+    Screen {
+        align: center middle;
+    }
+    #picker {
+        width: 90%;
+        height: 90%;
+    }
+    .picker-intro {
+        margin: 1 1;
+        color: $text-muted;
+    }
+    AutoRadioSet {
+        margin: 1 1;
+        width: 100%;
+    }
+    """
+
+    BINDINGS = [
+        Binding("enter", "confirm", "Confirm", priority=True),
+        Binding("escape", "cancel", "Cancel"),
+        HELP_BINDING,
+    ]
+
+    def __init__(
+        self,
+        ides: list[tuple[str, str]],
+        *,
+        preselect: int = 0,
+    ) -> None:
+        super().__init__()
+        self._ides = ides
+        self._preselect = preselect
+        self.result: str | None = None
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="picker"):
+            yield SkoreBanner()
+            yield Label(_IDE_INTRO, classes="picker-intro")
+            with AutoRadioSet(id="ides"):
+                for index, (_, label) in enumerate(self._ides):
+                    yield RadioButton(label, value=index == self._preselect)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.query_one("#ides", AutoRadioSet).select_index(self._preselect)
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpScreen("Open Claude Plugin", _IDE_HELP))
+
+    def action_confirm(self) -> None:
+        index = self.query_one("#ides", AutoRadioSet).pressed_index
+        if index < 0:
+            self.notify("Select an IDE.", severity="warning")
+            return
+        self.result = self._ides[index][0]
+        self.exit()
+
+    def action_cancel(self) -> None:
+        self.result = None
+        self.exit()

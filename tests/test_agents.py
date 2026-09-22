@@ -71,6 +71,11 @@ def test_harness_choices_include_canonical_names_and_aliases():
     assert "claude-cli" in HARNESS_CHOICES
     assert "claude-ui" in HARNESS_CHOICES
     assert "claude-plugin" in HARNESS_CHOICES
+    assert HARNESS_NAMES.count("claude-plugin") == 1
+    assert "claude-plugin-cursor" in HARNESS_CHOICES
+    assert "claude-plugin-code" in HARNESS_CHOICES
+    assert "claude-plugin-code-insiders" in HARNESS_CHOICES
+    assert "claude-plugin-cursor" not in HARNESS_NAMES
     assert "cursor-cli" in HARNESS_CHOICES
     assert "copilot-cli" in HARNESS_CHOICES
     assert "github-copilot-cli" in HARNESS_CHOICES
@@ -279,11 +284,14 @@ def test_harness_registry_helpers(monkeypatch, tmp_path):
     assert get_harness("opencode") is AGENTS["opencode"]
     with pytest.raises(KeyError):
         get_harness("missing")
+    assert get_harness("claude-plugin") is AGENTS["claude-plugin"]
+    assert get_harness("claude-plugin-cursor") is AGENTS["claude-plugin"]
     assert normalize_harness_name(None) is None
     assert normalize_harness_name("claude-code") == "claude"
     assert normalize_harness_name("claude-cli") == "claude"
     assert normalize_harness_name("claude-ui") == "claude-ui"
     assert normalize_harness_name("claude-plugin") == "claude-plugin"
+    assert normalize_harness_name("claude-plugin-cursor") == "claude-plugin-cursor"
     assert normalize_harness_name("cursor-cli") == "cursor-cli"
     assert normalize_harness_name("bobide") == "bob-ide"
     assert normalize_harness_name("unknown") == "unknown"

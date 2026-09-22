@@ -12,6 +12,7 @@ from skore_cli._agents import (
     HARNESS_CHOICES,
     HARNESS_NAMES,
     HarnessContext,
+    claude_plugin_ide_ready,
     detect_agent,
     get_harness,
     installed_harnesses,
@@ -20,6 +21,7 @@ from skore_cli._agents import (
     launch_harness,
     missing_harness_message,
     normalize_harness_name,
+    resolve_claude_plugin_harness,
 )
 from skore_cli._hub_auth import ensure_login
 from skore_cli._skore import URI_ENV, resolve_hub_uri
@@ -207,11 +209,13 @@ def agent(
     project directory.
 
     Supported harnesses: Bob Shell, Bob IDE, Claude CLI, Claude UI, Claude
-    Plugin, Cursor IDE, Cursor CLI, OpenCode, Pi, GitHub Copilot, Copilot CLI
-    and Codex CLI.
+    Plugin (Cursor, VS Code, or VS Code Insiders), Cursor IDE, Cursor CLI,
+    OpenCode, Pi, GitHub Copilot, Copilot CLI and Codex CLI.
     Detection uses ``PATH``, the application bundle on macOS for Bob IDE and
     Claude UI, or the Claude Code IDE extension for Claude Plugin. Claude CLI
-    also accepts ``--harness claude-cli``; Bob IDE also accepts
+    also accepts ``--harness claude-cli``. ``--harness claude-plugin`` asks
+    which IDE to open; ``claude-plugin-cursor``, ``claude-plugin-code``, and
+    ``claude-plugin-code-insiders`` select that IDE. Bob IDE also accepts
     ``--harness bobide``.
     """
     harness_name = normalize_harness_name(harness_name)
@@ -254,6 +258,8 @@ def agent(
                         )
                 else:
                     harness_name = _pick_harness(workspace)
+            if harness_name == "claude-plugin" or claude_plugin_ide_ready(harness_name):
+                harness_name = resolve_claude_plugin_harness(harness_name)
             api_key = _create_workspace_api_key(
                 resolved_hub_url, token, user_id, membership, harness_name
             )
@@ -282,6 +288,9 @@ def agent(
                 )
         else:
             harness_name = _pick_harness(workspace)
+
+    if harness_name == "claude-plugin" or claude_plugin_ide_ready(harness_name):
+        harness_name = resolve_claude_plugin_harness(harness_name)
 
     harness = get_harness(harness_name)
 
