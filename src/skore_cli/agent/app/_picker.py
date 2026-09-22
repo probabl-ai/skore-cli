@@ -126,12 +126,8 @@ class HarnessPicker(App[str | None]):
         yield Footer()
 
     def _sections(self) -> list[tuple[str, list[tuple[str, str]]]]:
-        detected = [
-            (name, label) for name, label, found in self._harnesses if found
-        ]
-        other = [
-            (name, label) for name, label, found in self._harnesses if not found
-        ]
+        detected = [(name, label) for name, label, found in self._harnesses if found]
+        other = [(name, label) for name, label, found in self._harnesses if not found]
         sections = []
         if detected:
             sections.append(("Detected", detected))

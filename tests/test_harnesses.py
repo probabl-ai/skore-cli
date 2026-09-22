@@ -8,6 +8,7 @@ import tomllib
 from typing import Any
 
 import pytest
+import rich_click as click
 
 from skore_cli import _agents
 from skore_cli._agents import (
@@ -820,6 +821,92 @@ def test_launch_claude_plugin_lists_ides_when_non_interactive(tmp_path, monkeypa
         match="Cursor, VS Code, and VS Code Insiders",
     ):
         _agents.launch_harness(AGENTS["claude-plugin"], tmp_path)
+
+
+def test_prompt_ide_returns_the_picker_choice(monkeypatch):
+    from skore_cli.agent import app as agent_app
+
+    class _Picker:
+        def __init__(self, options):
+            self.result = "code"
+
+        def run(self):
+            return None
+
+    monkeypatch.setattr(agent_app, "IdePicker", _Picker)
+
+    assert _agents._prompt_ide([("code", "VS Code")]) == "code"
+
+
+def test_prompt_ide_aborts_when_cancelled(monkeypatch):
+    from skore_cli.agent import app as agent_app
+
+    class _Picker:
+        def __init__(self, options):
+            self.result = None
+
+        def run(self):
+            return None
+
+    monkeypatch.setattr(agent_app, "IdePicker", _Picker)
+
+    with pytest.raises(click.Abort):
+        _agents._prompt_ide([("code", "VS Code")])
+
+
+def test_format_ide_list_joins_two_names():
+    assert _agents._format_ide_list(["Cursor", "VS Code"]) == "Cursor and VS Code"
+
+
+def test_claude_plugin_ide_rejects_an_unknown_suffix():
+    assert _agents.claude_plugin_ide("claude-plugin-notepad") is None
+
+
+def test_choose_claude_plugin_host_errors_when_none_installed(monkeypatch):
+    monkeypatch.setattr(_agents, "ide_extension_hosts", lambda: ())
+
+    with pytest.raises(RuntimeError, match="Claude Plugin is not installed"):
+        _agents._choose_claude_plugin_host()
+
+
+def test_choose_claude_plugin_host_errors_when_preferred_is_missing(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        _agents,
+        "ide_extension_hosts",
+        lambda: _plugin_hosts(tmp_path, "cursor", "code"),
+    )
+
+    with pytest.raises(RuntimeError, match="Claude Plugin is not installed"):
+        _agents._choose_claude_plugin_host("code-insiders")
+
+
+def test_choose_claude_plugin_host_accepts_the_second_ide(tmp_path, monkeypatch):
+    monkeypatch.setattr(_agents, "is_non_interactive", lambda: False)
+    monkeypatch.setattr(
+        _agents,
+        "ide_extension_hosts",
+        lambda: _plugin_hosts(tmp_path, "cursor", "code"),
+    )
+    monkeypatch.setattr(_agents, "_prompt_ide", lambda options: "code")
+
+    binary, scheme = _agents._choose_claude_plugin_host()
+
+    assert (binary, scheme) == ("code", "vscode")
+
+
+def test_choose_claude_plugin_host_rejects_an_unknown_choice(tmp_path, monkeypatch):
+    monkeypatch.setattr(_agents, "is_non_interactive", lambda: False)
+    monkeypatch.setattr(
+        _agents,
+        "ide_extension_hosts",
+        lambda: _plugin_hosts(tmp_path, "cursor", "code"),
+    )
+    monkeypatch.setattr(_agents, "_prompt_ide", lambda options: "nope")
+
+    with pytest.raises(RuntimeError, match="Unknown IDE"):
+        _agents._choose_claude_plugin_host()
 
 
 def test_launch_bob_shell_takes_the_workspace_from_the_cwd(tmp_path, monkeypatch):

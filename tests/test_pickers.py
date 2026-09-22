@@ -114,6 +114,39 @@ def test_harness_picker_copy_lists_all_harnesses():
     assert "Codex CLI" in _HARNESS_HELP
 
 
+async def test_harness_picker_omits_an_empty_group():
+    detected = HarnessPicker([("opencode", "OpenCode", True)])
+    other = HarnessPicker([("pi", "Pi", False)])
+
+    async with detected.run_test() as pilot:
+        await pilot.pause()
+        detected_headings = [
+            str(label.content) for label in detected.query(".harness-group")
+        ]
+    async with other.run_test() as pilot:
+        await pilot.pause()
+        other_headings = [str(label.content) for label in other.query(".harness-group")]
+
+    assert detected_headings == ["Detected:"]
+    assert other_headings == ["Other:"]
+
+
+async def test_harness_picker_mounts_with_no_rows():
+    app = HarnessPicker([])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+
+    assert app.result is None
+
+
+def test_harness_picker_mount_ignores_a_missing_button():
+    app = HarnessPicker([("ghost", "Ghost", True)])
+    radio = SimpleNamespace(children=[SimpleNamespace(name="other")])
+    app.query_one = lambda *_args, **_kwargs: radio
+
+    app.on_mount()
+
+
 async def test_harness_picker_help_screen():
     app = HarnessPicker(HARNESSES, preselect=0)
     async with app.run_test() as pilot:
@@ -221,6 +254,31 @@ async def test_ide_picker_cancel_returns_none():
         await pilot.pause()
 
     assert app.result is None
+
+
+async def test_ide_picker_help_screen():
+    app = IdePicker(IDES, preselect=0)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("?")
+        await pilot.pause()
+
+        assert isinstance(app.screen, HelpScreen)
+
+
+def test_ide_picker_requires_selection(monkeypatch):
+    app = IdePicker(IDES)
+    notifications = []
+    radio = SimpleNamespace(pressed_index=-1)
+
+    monkeypatch.setattr(app, "query_one", lambda *_: radio)
+    monkeypatch.setattr(
+        app, "notify", lambda message, **_: notifications.append(message)
+    )
+
+    app.action_confirm()
+
+    assert notifications == ["Select an IDE."]
 
 
 # --------------------------------------------------------------------------- #

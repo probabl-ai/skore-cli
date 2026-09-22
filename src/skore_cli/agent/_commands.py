@@ -65,9 +65,7 @@ def _pick_harness(workspace: Path) -> str:
         for harness in installed_harnesses()
         if harness.harness_name is not None
     }
-    harnesses = [
-        agent for agent in AGENTS.values() if agent.harness_name is not None
-    ]
+    harnesses = [agent for agent in AGENTS.values() if agent.harness_name is not None]
     ordered = [agent for agent in harnesses if agent.harness_name in installed]
     ordered += [agent for agent in harnesses if agent.harness_name not in installed]
     rows = [
