@@ -7,6 +7,7 @@ from pathlib import Path
 import rich_click as click
 
 from skore_cli._agents import (
+    AGENTS,
     DEFAULT_MODEL_ID,
     HARNESS_CHOICES,
     HARNESS_NAMES,
@@ -50,19 +51,31 @@ def _pick_workspace(
 
 
 def _pick_harness(workspace: Path) -> str:
-    """Launch the Textual harness picker among detected harnesses."""
+    """Launch the Textual harness picker.
+
+    Detected harnesses are listed first. Harnesses that are not installed
+    on this machine are listed after them.
+    """
     from skore_cli.agent.app import HarnessPicker
 
-    installed = installed_harnesses()
-    if not installed:
-        raise click.ClickException(
-            "no supported harness detected. Install one of: "
-            f"{', '.join(HARNESS_NAMES)}."
-        )
-    rows = [
-        (harness.harness_name, harness.harness_display_name, True)
-        for harness in installed
+    installed = {
+        harness.harness_name
+        for harness in installed_harnesses()
         if harness.harness_name is not None
+    }
+    harnesses = [
+        agent for agent in AGENTS.values() if agent.harness_name is not None
+    ]
+    ordered = [agent for agent in harnesses if agent.harness_name in installed]
+    ordered += [agent for agent in harnesses if agent.harness_name not in installed]
+    rows = [
+        (
+            agent.harness_name,
+            agent.harness_display_name,
+            agent.harness_name in installed,
+        )
+        for agent in ordered
+        if agent.harness_name is not None
     ]
     app = HarnessPicker(rows, preselect=0)
     app.run()
@@ -165,7 +178,7 @@ def _resolve_membership(
     "harness_name",
     type=click.Choice(HARNESS_CHOICES),
     default=None,
-    help="Harness to use non-interactively (omit to pick among detected ones).",
+    help="Harness to use non-interactively (omit to pick one).",
 )
 @click.option(
     "--model-id",

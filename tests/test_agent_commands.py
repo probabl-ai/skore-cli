@@ -420,7 +420,7 @@ def test_pick_harness_returns_selection(tmp_path, monkeypatch):
     assert _commands._pick_harness(tmp_path) == "pi"
 
 
-def test_pick_harness_lists_only_detected(tmp_path, monkeypatch):
+def test_pick_harness_lists_detected_then_undetected(tmp_path, monkeypatch):
     captured: dict[str, object] = {}
 
     class _CapturePicker:
@@ -444,17 +444,35 @@ def test_pick_harness_lists_only_detected(tmp_path, monkeypatch):
 
     assert _commands._pick_harness(tmp_path) == "cursor"
     rows = captured["rows"]
-    assert rows == [("cursor", "Cursor IDE", True)]
+    assert rows[0] == ("cursor", "Cursor IDE", True)
+    assert [name for name, _, detected in rows if detected] == ["cursor"]
+    assert [name for name, _, detected in rows if not detected] == [
+        name for name in HARNESS_NAMES if name != "cursor"
+    ]
     assert captured["preselect"] == 0
 
 
-def test_pick_harness_errors_when_none_detected(tmp_path, monkeypatch):
+def test_pick_harness_lists_undetected_when_none_detected(tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    class _CapturePicker:
+        def __init__(self, rows, *, preselect=0):
+            captured["rows"] = rows
+            self.result = "pi"
+
+        def run(self):
+            return None
+
     monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
     monkeypatch.setattr(_agents, "CLAUDE_UI_APP_PATH", tmp_path / "absent.app")
     monkeypatch.setattr(_agents, "ide_extension_hosts", lambda: ())
     monkeypatch.setattr(_agents.shutil, "which", lambda name: None)
-    with pytest.raises(click.ClickException, match="no supported harness"):
-        _commands._pick_harness(tmp_path)
+    monkeypatch.setattr(_agent_app, "HarnessPicker", _CapturePicker)
+
+    assert _commands._pick_harness(tmp_path) == "pi"
+    rows = captured["rows"]
+    assert [name for name, _, _ in rows] == HARNESS_NAMES
+    assert all(detected is False for _, _, detected in rows)
 
 
 def test_pick_harness_aborts_when_cancelled(tmp_path, monkeypatch):

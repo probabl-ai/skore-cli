@@ -13,14 +13,15 @@ from skore_cli.skills.app._widgets import AutoRadioSet
 
 _HARNESS_INTRO = (
     "Choose the agent harness to launch.\n"
-    "Only harnesses detected on this machine are listed.\n"
+    "Detected harnesses are listed first. Others are listed below.\n"
     "[reverse] ↑/↓ [/] choose  [reverse] Enter [/] confirm  [reverse] ? [/] help"
 )
 
 _HARNESS_HELP = """\
 Pick the local coding agent to configure and launch.
 
-Only detected harnesses appear in the list.
+Detected harnesses are listed first. Harnesses that are not
+installed on this machine are listed after them.
 
 Supported harnesses:
   • Bob Shell    — writes .bob/mcp.json
@@ -111,7 +112,8 @@ class HarnessPicker(App[str | None]):
             yield Label(_HARNESS_INTRO, classes="picker-intro")
             with AutoRadioSet(id="harnesses"):
                 for index, (_, label, detected) in enumerate(self._harnesses):
-                    text = f"{label}  (detected)" if detected else label
+                    suffix = "(detected)" if detected else "(not detected)"
+                    text = f"{label}  {suffix}"
                     yield RadioButton(text, value=index == self._preselect)
         yield Footer()
 

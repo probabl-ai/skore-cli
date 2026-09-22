@@ -555,50 +555,7 @@ def _has_ide_extension(extensions_dir: Path, extension_id: str) -> bool:
     )
 
 
-def _path_is_cursor(value: str) -> bool:
-    """Return whether an IDE path points at Cursor on macOS, Windows, or Linux."""
-    normalized = "/" + value.replace("\\", "/").lower() + "/"
-    return any(
-        marker in normalized
-        for marker in (
-            "/cursor.app/",
-            "/cursor/resources/",
-            "/application support/cursor/",
-            "/roaming/cursor/",
-        )
-    )
-
-
-def _current_ide_binary() -> str | None:
-    """Return the IDE we are running inside, if it can host the Claude plugin.
-
-    ``CURSOR_AGENT`` is only set for Cursor's own agent process. A normal
-    integrated terminal still has Cursor's askpass and IPC paths, and reports
-    ``TERM_PROGRAM=vscode``.
-    """
-    if (
-        os.environ.get("CURSOR_AGENT")
-        or os.environ.get("CURSOR_TRACE_ID")
-        or os.environ.get("CURSOR_CLI")
-    ):
-        return "cursor"
-    for name in (
-        "GIT_ASKPASS",
-        "VSCODE_GIT_ASKPASS_NODE",
-        "VSCODE_GIT_ASKPASS_MAIN",
-        "VSCODE_IPC_HOOK",
-    ):
-        if _path_is_cursor(os.environ.get(name, "")):
-            return "cursor"
-    if os.environ.get("TERM_PROGRAM") == "vscode":
-        return "code"
-    return None
-
-
 def _claude_plugin_missing_message() -> str:
-    current = _current_ide_binary()
-    if current is not None:
-        return f"Claude Plugin is not installed in {IDE_PLUGIN_LABELS[current]}."
     return "Claude Plugin is not installed in VS Code or Cursor."
 
 
@@ -611,30 +568,53 @@ def missing_harness_message(agent: Agent) -> str:
     return f"{agent.harness_display_name} is not installed or not on PATH."
 
 
-def _resolve_claude_plugin_host() -> tuple[str, str] | None:
-    """Return ``(binary, uri_scheme)`` for the Claude Code plugin in this context.
-
-    Inside Cursor, only the Cursor extension counts. A VS Code install is not
-    a fallback. Outside an IDE, VS Code wins if several hosts have it.
-    """
-    hosts = list(ide_extension_hosts())
-    current = _current_ide_binary()
-    if current is not None:
-        for binary, folder, scheme in hosts:
-            if binary != current:
-                continue
-            if _has_ide_extension(folder, CLAUDE_PLUGIN_EXTENSION):
-                return binary, scheme
-        return None
-    installed = [
+def _installed_claude_plugin_hosts() -> list[tuple[str, str]]:
+    """Return ``(binary, uri_scheme)`` for IDEs that have the Claude plugin."""
+    return [
         (binary, scheme)
-        for binary, folder, scheme in hosts
+        for binary, folder, scheme in ide_extension_hosts()
         if _has_ide_extension(folder, CLAUDE_PLUGIN_EXTENSION)
     ]
-    if not installed:
-        return None
-    priority = {"code": 0, "code-insiders": 1, "cursor": 2}
-    return min(installed, key=lambda host: priority.get(host[0], 99))
+
+
+def _prompt_ide_label(prompt: str, labels: list[str]) -> str:
+    """Ask which of ``labels`` to use."""
+    import rich_click as click
+
+    return str(
+        click.prompt(
+            prompt,
+            type=click.Choice(labels, case_sensitive=False),
+            show_choices=True,
+        )
+    )
+
+
+def _format_ide_list(labels: list[str]) -> str:
+    """Return ``labels`` as a phrase, with a comma before the last item."""
+    if len(labels) == 2:
+        return f"{labels[0]} and {labels[1]}"
+    return f"{', '.join(labels[:-1])}, and {labels[-1]}"
+
+
+def _choose_claude_plugin_host() -> tuple[str, str]:
+    """Return the IDE to open, asking when more than one has the plugin."""
+    hosts = _installed_claude_plugin_hosts()
+    if not hosts:
+        raise RuntimeError(_claude_plugin_missing_message())
+    if len(hosts) == 1:
+        return hosts[0]
+    labels = [IDE_PLUGIN_LABELS.get(binary, binary) for binary, _scheme in hosts]
+    if is_non_interactive():
+        raise RuntimeError(
+            "Claude Plugin is installed in "
+            f"{_format_ide_list(labels)}. Run interactively to choose an IDE."
+        )
+    chosen = _prompt_ide_label("Open Claude Plugin in", labels)
+    for host, label in zip(hosts, labels, strict=True):
+        if label.lower() == chosen.lower():
+            return host
+    raise RuntimeError(f"Unknown IDE: {chosen}")
 
 
 def _open_uri(uri: str) -> None:
@@ -658,10 +638,7 @@ def _open_workspace_in_ide(binary: str, workspace: Path) -> None:
 
 def _launch_claude_plugin(workspace: Path, _model_id: str) -> None:
     """Open the workspace, then the Claude Code panel, in a host IDE."""
-    host = _resolve_claude_plugin_host()
-    if host is None:
-        raise RuntimeError(_claude_plugin_missing_message())
-    binary, scheme = host
+    binary, scheme = _choose_claude_plugin_host()
     from skore_cli._style import console
 
     console.print(
@@ -1153,7 +1130,7 @@ def is_harness_installed(agent: Agent) -> bool:
     if agent.harness_name == "claude-ui":
         return sys.platform == "darwin" and CLAUDE_UI_APP_PATH.is_dir()
     if agent.harness_name == "claude-plugin":
-        return _resolve_claude_plugin_host() is not None
+        return bool(_installed_claude_plugin_hosts())
     if agent.harness_name == "cursor-cli":
         return _resolve_cursor_cli_binary() is not None
     binaries = agent.harness_binaries or (

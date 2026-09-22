@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from textual.app import App, ComposeResult
-from textual.widgets import SelectionList
+from textual.widgets import RadioButton, SelectionList
 
 from skore_cli.agent.app import HarnessPicker, WorkspacePicker
 from skore_cli.agent.app._picker import _HARNESS_HELP, _HARNESS_INTRO
@@ -42,6 +42,19 @@ async def test_textual_apps_show_banner():
 # --------------------------------------------------------------------------- #
 # HarnessPicker
 # --------------------------------------------------------------------------- #
+
+
+async def test_harness_picker_marks_detected_and_undetected():
+    app = HarnessPicker(HARNESSES, preselect=0)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        labels = [str(button.label) for button in app.query(RadioButton)]
+
+    assert labels == [
+        "OpenCode  (detected)",
+        "Claude  (not detected)",
+        "Pi  (not detected)",
+    ]
 
 
 async def test_harness_picker_confirms_preselected():
@@ -90,8 +103,8 @@ def test_harness_picker_requires_selection(monkeypatch):
 
 
 def test_harness_picker_copy_lists_all_harnesses():
-    assert "detected" in _HARNESS_INTRO.lower()
-    assert "Select one that is not" not in _HARNESS_HELP
+    assert "detected harnesses are listed first" in _HARNESS_INTRO.lower()
+    assert "listed after them" in _HARNESS_HELP.lower()
     assert "Claude CLI" in _HARNESS_HELP
     assert "Claude UI" in _HARNESS_HELP
     assert "Claude Plugin" in _HARNESS_HELP

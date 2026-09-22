@@ -34,16 +34,7 @@ def no_bob_ide_app(tmp_path, monkeypatch):
     monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
     monkeypatch.setattr(_agents, "CLAUDE_UI_APP_PATH", tmp_path / "absent.app")
     monkeypatch.setattr(_agents, "ide_extension_hosts", lambda: ())
-    for name in (
-        "CURSOR_AGENT",
-        "CURSOR_TRACE_ID",
-        "CURSOR_CLI",
-        "GIT_ASKPASS",
-        "VSCODE_GIT_ASKPASS_NODE",
-        "VSCODE_GIT_ASKPASS_MAIN",
-        "VSCODE_IPC_HOOK",
-        "TERM_PROGRAM",
-    ):
+    for name in ("CURSOR_AGENT", "CURSOR_CLI"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(_agents.subprocess, "run", lambda *a, **k: None)
     _real_which = _agents.shutil.which
@@ -571,71 +562,6 @@ def test_launch_claude_plugin_opens_cursor_uri_in_cursor(tmp_path, monkeypatch):
     assert captured["argv"] == ["open", "cursor://anthropic.claude-code/open"]
 
 
-def test_current_ide_is_cursor_from_askpass_without_cursor_agent(monkeypatch):
-    monkeypatch.delenv("CURSOR_AGENT", raising=False)
-    monkeypatch.setenv(
-        "GIT_ASKPASS",
-        "/Applications/Cursor.app/Contents/Resources/app/extensions/git/dist/askpass.sh",
-    )
-    assert _agents._current_ide_binary() == "cursor"
-
-
-@pytest.mark.parametrize(
-    "askpass",
-    [
-        "/usr/share/cursor/resources/app/extensions/git/dist/askpass.sh",
-        "/home/dev/.local/share/cursor/resources/app/extensions/git/dist/askpass.sh",
-        (
-            "C:/Users/dev/AppData/Local/Programs/cursor"
-            "/resources/app/extensions/git/dist/askpass.sh"
-        ),
-        "/Users/dev/Library/Application Support/Cursor/User/globalStorage/askpass.sh",
-        (
-            r"C:\Users\dev\AppData\Local\Programs\cursor"
-            r"\resources\app\extensions\git\dist\askpass.sh"
-        ),
-        (
-            r"C:\Users\dev\AppData\Roaming\Cursor"
-            r"\User\globalStorage\askpass.sh"
-        ),
-    ],
-)
-def test_current_ide_is_cursor_from_install_path(monkeypatch, askpass):
-    monkeypatch.setenv("TERM_PROGRAM", "vscode")
-    monkeypatch.setenv("GIT_ASKPASS", askpass)
-    assert _agents._current_ide_binary() == "cursor"
-
-
-@pytest.mark.parametrize(
-    "askpass",
-    [
-        "/usr/share/code/resources/app/extensions/git/dist/askpass.sh",
-        (
-            r"C:\Users\dev\AppData\Local\Programs\Microsoft VS Code"
-            r"\resources\app\extensions\git\dist\askpass.sh"
-        ),
-        (
-            r"C:\Users\cursor\AppData\Local\Programs\Microsoft VS Code"
-            r"\resources\app\extensions\git\dist\askpass.sh"
-        ),
-    ],
-)
-def test_current_ide_ignores_vscode_askpass_path(monkeypatch, askpass):
-    monkeypatch.setenv("TERM_PROGRAM", "vscode")
-    monkeypatch.setenv("GIT_ASKPASS", askpass)
-    assert _agents._current_ide_binary() == "code"
-
-
-def test_current_ide_is_vscode_from_term_program(monkeypatch):
-    monkeypatch.setenv("TERM_PROGRAM", "vscode")
-    assert _agents._current_ide_binary() == "code"
-
-
-def test_current_ide_is_cursor_from_cursor_cli(monkeypatch):
-    monkeypatch.setenv("CURSOR_CLI", "1")
-    assert _agents._current_ide_binary() == "cursor"
-
-
 def test_missing_harness_message_claude_plugin_outside_ide():
     assert (
         _agents.missing_harness_message(AGENTS["claude-plugin"])
@@ -745,65 +671,32 @@ def test_launch_copilot_cli_restores_cwd_when_exec_fails(tmp_path, monkeypatch):
     assert os.getcwd() == previous
 
 
-def test_claude_plugin_in_cursor_via_askpass_ignores_vscode_install(
-    tmp_path, monkeypatch
-):
-    vscode = tmp_path / "vscode"
-    (vscode / "anthropic.claude-code-1.0.0").mkdir(parents=True)
-    monkeypatch.delenv("CURSOR_AGENT", raising=False)
-    monkeypatch.setenv(
-        "GIT_ASKPASS",
-        "/Applications/Cursor.app/Contents/Resources/app/extensions/git/dist/askpass.sh",
-    )
-    monkeypatch.setattr(
-        _agents,
-        "ide_extension_hosts",
-        lambda: (
-            ("cursor", tmp_path / "cursor", "cursor"),
-            ("code", vscode, "vscode"),
-        ),
-    )
-    assert is_harness_installed(AGENTS["claude-plugin"]) is False
-    with pytest.raises(RuntimeError, match="Claude Plugin is not installed in Cursor"):
-        _agents.launch_harness(AGENTS["claude-plugin"], tmp_path)
+def _plugin_hosts(tmp_path, *binaries: str) -> tuple[tuple[str, object, str], ...]:
+    hosts = []
+    for binary, scheme in (
+        ("cursor", "cursor"),
+        ("code", "vscode"),
+        ("code-insiders", "vscode-insiders"),
+    ):
+        folder = tmp_path / binary
+        if binary in binaries:
+            (folder / "anthropic.claude-code-1.0.0").mkdir(parents=True, exist_ok=True)
+        hosts.append((binary, folder, scheme))
+    return tuple(hosts)
 
 
-def test_claude_plugin_in_cursor_ignores_vscode_install(tmp_path, monkeypatch):
-    vscode = tmp_path / "vscode"
-    (vscode / "anthropic.claude-code-1.0.0").mkdir(parents=True)
-    monkeypatch.setenv("CURSOR_AGENT", "1")
-    monkeypatch.setattr(
-        _agents,
-        "ide_extension_hosts",
-        lambda: (
-            ("cursor", tmp_path / "cursor", "cursor"),
-            ("code", vscode, "vscode"),
-        ),
-    )
-    assert is_harness_installed(AGENTS["claude-plugin"]) is False
-    with pytest.raises(RuntimeError, match="Claude Plugin is not installed in Cursor"):
-        _agents.launch_harness(AGENTS["claude-plugin"], tmp_path)
-
-
-def test_launch_claude_plugin_opens_vscode_uri_outside_cursor(tmp_path, monkeypatch):
+def test_claude_plugin_opens_the_only_installed_ide(tmp_path, monkeypatch):
     captured: dict[str, object] = {}
 
     def fake_exec(name, argv, *, env=None):
         captured["argv"] = argv
 
-    vscode = tmp_path / "vscode"
-    cursor = tmp_path / "cursor"
-    (vscode / "anthropic.claude-code-1.0.0").mkdir(parents=True)
-    (cursor / "anthropic.claude-code-1.0.0").mkdir(parents=True)
-    monkeypatch.delenv("CURSOR_AGENT", raising=False)
+    monkeypatch.setenv("CURSOR_AGENT", "1")
     monkeypatch.setattr(_agents.sys, "platform", "darwin")
     monkeypatch.setattr(
         _agents,
         "ide_extension_hosts",
-        lambda: (
-            ("cursor", cursor, "cursor"),
-            ("code", vscode, "vscode"),
-        ),
+        lambda: _plugin_hosts(tmp_path, "code"),
     )
     monkeypatch.setattr(
         _agents.shutil,
@@ -816,10 +709,70 @@ def test_launch_claude_plugin_opens_vscode_uri_outside_cursor(tmp_path, monkeypa
         "run",
         lambda argv, check=False: opened.append(list(argv)),
     )
+    prompted: list[object] = []
+    monkeypatch.setattr(
+        _agents,
+        "_prompt_ide_label",
+        lambda prompt, labels: prompted.append((prompt, labels)),
+    )
     monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    assert is_harness_installed(AGENTS["claude-plugin"]) is True
     _agents.launch_harness(AGENTS["claude-plugin"], tmp_path)
+    assert prompted == []
     assert opened == [["/usr/bin/code", str(tmp_path)]]
     assert captured["argv"] == ["open", "vscode://anthropic.claude-code/open"]
+
+
+def test_launch_claude_plugin_prompts_when_several_ides(tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_exec(name, argv, *, env=None):
+        captured["argv"] = argv
+
+    monkeypatch.setattr(_agents.sys, "platform", "darwin")
+    monkeypatch.setattr(_agents, "is_non_interactive", lambda: False)
+    monkeypatch.setattr(
+        _agents,
+        "ide_extension_hosts",
+        lambda: _plugin_hosts(tmp_path, "cursor", "code"),
+    )
+    monkeypatch.setattr(
+        _agents.shutil,
+        "which",
+        lambda cmd: f"/usr/bin/{cmd}" if cmd in {"cursor", "code"} else None,
+    )
+    opened: list[list[str]] = []
+    monkeypatch.setattr(
+        _agents.subprocess,
+        "run",
+        lambda argv, check=False: opened.append(list(argv)),
+    )
+    prompts: list[tuple[str, list[str]]] = []
+
+    def fake_prompt(prompt, labels):
+        prompts.append((prompt, list(labels)))
+        return "Cursor"
+
+    monkeypatch.setattr(_agents, "_prompt_ide_label", fake_prompt)
+    monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
+    _agents.launch_harness(AGENTS["claude-plugin"], tmp_path)
+    assert prompts == [("Open Claude Plugin in", ["Cursor", "VS Code"])]
+    assert opened == [["/usr/bin/cursor", str(tmp_path)]]
+    assert captured["argv"] == ["open", "cursor://anthropic.claude-code/open"]
+
+
+def test_launch_claude_plugin_lists_ides_when_non_interactive(tmp_path, monkeypatch):
+    monkeypatch.setattr(_agents, "is_non_interactive", lambda: True)
+    monkeypatch.setattr(
+        _agents,
+        "ide_extension_hosts",
+        lambda: _plugin_hosts(tmp_path, "cursor", "code", "code-insiders"),
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="Cursor, VS Code, and VS Code Insiders",
+    ):
+        _agents.launch_harness(AGENTS["claude-plugin"], tmp_path)
 
 
 def test_launch_bob_shell_takes_the_workspace_from_the_cwd(tmp_path, monkeypatch):

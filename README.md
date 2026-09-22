@@ -62,7 +62,7 @@ launches the agent. Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude CL
 **Pi**, **GitHub Copilot**, **Copilot CLI** and **Codex CLI**
 (detected via `PATH`, the application bundle on macOS for Bob IDE and Claude UI,
 or the Claude Code extension for Claude Plugin). The interactive picker lists
-only harnesses detected on this machine.
+detected harnesses first, then the ones that are not installed.
 `--harness claude` / `claude-cli` is the CLI; `claude-ui` and `claude-plugin`
 are the desktop app and IDE extension. `--harness cursor` is Cursor IDE;
 `cursor-cli` is the `agent` binary. Bob IDE also
