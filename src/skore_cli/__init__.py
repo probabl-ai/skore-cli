@@ -114,12 +114,8 @@ cli.add_command(sync)
 load_plugins(cli)
 
 # Ensure ``skore`` is available without importing it explicitly
-try:
-    importlib.util.find_spec("skore", package=None)
-except ModuleNotFoundError:
-    message = (
+if importlib.util.find_spec("skore") is None:
+    raise click.ClickException(
         "this command needs the `skore` package (install it with `pip install "
         "skore-cli` or `pip install skore`)."
     )
-
-    raise click.ClickException(message) from None

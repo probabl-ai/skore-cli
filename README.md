@@ -113,8 +113,9 @@ SKORE_HUB_API_KEY=... skore sync production \
 skore sync experiment --to=mlflow --tracking-uri=http://localhost:5000
 ```
 
-Hub synchronization requires `SKORE_HUB_API_KEY`. Use `--hub-url` to target a custom
-Hub API. Install `skore[mlflow]` to synchronize with MLflow.
+Hub synchronization uses `SKORE_HUB_API_KEY` when set, otherwise the key stored by
+`skore hub api-key`. Use `--hub-url` to target a custom Hub API. Install
+`skore[mlflow]` to synchronize with MLflow.
 
 ## Agent detection
 
