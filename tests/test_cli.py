@@ -1,14 +1,10 @@
-"""Tests for the CLI wiring, the lazy `skore` accessor and the plugin host."""
+"""Tests for the CLI wiring and the plugin host."""
 
 from __future__ import annotations
 
-import os
-from types import SimpleNamespace
-
-import pytest
 import rich_click as click
 
-from skore_cli import _plugins, _skore
+from skore_cli import _plugins
 
 
 def test_cli_exposes_builtin_commands():
@@ -153,53 +149,6 @@ def test_cli_subcommand_help_omits_banner():
     assert result.exit_code == 0
     assert SKORE_BANNER.rstrip("\n") not in result.output
     assert "Usage" in result.output
-
-
-# --------------------------------------------------------------------------- #
-# _skore.auth
-# --------------------------------------------------------------------------- #
-
-
-def test_auth_returns_module(monkeypatch):
-    sentinel = SimpleNamespace(name="fake-module")
-    monkeypatch.setattr(_skore.importlib, "import_module", lambda name: sentinel)
-
-    assert _skore.auth("uri") is sentinel
-
-
-def test_auth_imports_expected_path(monkeypatch):
-    seen = {}
-
-    def fake_import(name):
-        seen["name"] = name
-        return SimpleNamespace()
-
-    monkeypatch.setattr(_skore.importlib, "import_module", fake_import)
-
-    _skore.auth("token")
-    assert seen["name"] == "skore._plugins.hub.authentication.token"
-
-
-def test_auth_missing_skore_raises_click_exception(monkeypatch):
-    def fake_import(name):
-        raise ImportError("no skore")
-
-    monkeypatch.setattr(_skore.importlib, "import_module", fake_import)
-
-    with pytest.raises(click.ClickException) as excinfo:
-        _skore.auth("store")
-    assert "skore" in str(excinfo.value)
-
-
-def test_resolve_hub_uri_sets_explicit_url(monkeypatch):
-    module = SimpleNamespace(URI=lambda: "https://resolved.test")
-
-    monkeypatch.delenv(_skore.URI_ENV, raising=False)
-
-    assert _skore.resolve_hub_uri("https://hub.test", lambda _: module) == (
-        "https://resolved.test"
-    )
-    assert os.environ[_skore.URI_ENV] == "https://hub.test"
 
 
 # --------------------------------------------------------------------------- #

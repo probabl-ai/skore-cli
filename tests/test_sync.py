@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -50,7 +49,6 @@ def projects(monkeypatch):
         logins.append(mode)
 
     monkeypatch.setattr(_commands, "_project_api", lambda: (project, login))
-    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda _: "http://hub.test")
     return created, logins
 
 
@@ -192,11 +190,7 @@ def test_sync_requires_hub_api_key():
 
 
 def test_sync_requires_skore_with_sync(monkeypatch):
-    monkeypatch.setattr(
-        _commands.importlib,
-        "import_module",
-        lambda _: SimpleNamespace(Project=object),
-    )
+    monkeypatch.setattr("skore.Project", object)
 
     result = CliRunner().invoke(sync, ["experiment", "--to=mlflow"])
 
@@ -207,25 +201,10 @@ def test_sync_requires_skore_with_sync(monkeypatch):
 def test_project_api_imports_supported_skore(monkeypatch):
     project = type("Project", (), {"sync": None})
     login = object()
-    monkeypatch.setattr(
-        _commands.importlib,
-        "import_module",
-        lambda _: SimpleNamespace(Project=project, login=login),
-    )
+    monkeypatch.setattr("skore.Project", project)
+    monkeypatch.setattr("skore.login", login)
 
     assert _commands._project_api() == (project, login)
-
-
-def test_sync_requires_skore(monkeypatch):
-    def import_skore(_):
-        raise ImportError
-
-    monkeypatch.setattr(_commands.importlib, "import_module", import_skore)
-
-    result = CliRunner().invoke(sync, ["experiment", "--to=mlflow"])
-
-    assert result.exit_code != 0
-    assert "needs the `skore` package" in result.output
 
 
 def test_sync_reports_empty_result(capsys):
