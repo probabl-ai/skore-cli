@@ -216,3 +216,9 @@ opencode.json
 .pi/
 .codex/
 .skore
+
+.claude/settings.local.json
+
+.cursor/mcp.json
+
+.pi/agent/models.json
