@@ -24,7 +24,11 @@ from skore_cli._skore import URI_ENV, resolve_hub_uri
 from skore_cli._skore import auth as _auth
 from skore_cli._style import console
 from skore_cli.agent import _client
-from skore_cli.agent._skore_file import SkoreConfig, ensure_gitignore_entry
+from skore_cli.agent._skore_file import (
+    SkoreConfig,
+    ensure_gitignore_entry,
+    persist_workspace_env_manager,
+)
 
 PROJECT_PERMISSIONS = (
     "create:project",
@@ -251,6 +255,7 @@ def agent(
             harness=harness_name or (config.harness if config else None),
         )
         config_path = config.save(workspace)
+        persist_workspace_env_manager(workspace)
         ensure_gitignore_entry(workspace)
         console.print(f"[skore.ok]+[/] saved [skore.path]{config_path}[/]")
 
@@ -281,6 +286,7 @@ def agent(
             harness=harness_name,
         )
         config.save(workspace)
+        persist_workspace_env_manager(workspace)
 
     console.print(
         f"Configuring [skore.skill]{harness.harness_display_name}[/] in "

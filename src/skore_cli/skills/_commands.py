@@ -475,6 +475,11 @@ def _copy_selected_skills(
                 progress.advance(task)
             _persist_source_catalog(target, repo, tag, catalog)
 
+    if not global_:
+        from skore_cli.agent._skore_file import persist_workspace_env_manager
+
+        persist_workspace_env_manager(Path.cwd())
+
     return len(targets)
 
 

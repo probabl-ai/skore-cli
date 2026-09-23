@@ -108,6 +108,52 @@ def test_skore_config_save_omits_none_harness(tmp_path):
     assert "harness" not in payload
 
 
+def test_skore_config_save_preserves_workspace_loop(tmp_path):
+    """Hub save must not wipe the skills ``workspace`` object."""
+    (tmp_path / SKORE_FILENAME).write_text(
+        json.dumps(
+            {
+                "hub_url": "http://hub.test",
+                "workspace": {"loop": {"stage": "eda"}, "env_manager": "uv"},
+                "workspace_id": 1,
+                "api_key": "secret",
+            }
+        )
+        + "\n"
+    )
+    config = SkoreConfig(
+        hub_url="http://hub.test",
+        workspace="ws-1",
+        workspace_id=1,
+        api_key="secret",
+        harness="cursor",
+    )
+    config.save(tmp_path)
+    payload = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert payload["workspace"]["loop"]["stage"] == "eda"
+    assert payload["workspace"]["env_manager"] == "uv"
+    assert payload["workspace_name"] == "ws-1"
+    loaded = SkoreConfig.load(tmp_path)
+    assert loaded is not None
+    assert loaded.workspace == "ws-1"
+
+
+def test_persist_env_manager_from_pixi_toml(tmp_path):
+    """A single visible manager is recorded once."""
+    from skore_cli.agent._skore_file import persist_workspace_env_manager
+
+    (tmp_path / "pixi.toml").write_text("[workspace]\n", encoding="utf-8")
+    persist_workspace_env_manager(tmp_path)
+    payload = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert payload["workspace"]["env_manager"] == "pixi"
+    assert "managed" not in payload.get("workspace", {}).get("env", {})
+    payload["workspace"]["env_manager"] = "uv"
+    (tmp_path / SKORE_FILENAME).write_text(json.dumps(payload) + "\n")
+    persist_workspace_env_manager(tmp_path)
+    again = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert again["workspace"]["env_manager"] == "uv"
+
+
 def test_ensure_gitignore_appends_to_existing_file(tmp_path):
     (tmp_path / ".gitignore").write_text("*.log\n__pycache__/\n")
     ensure_gitignore_entry(tmp_path)
