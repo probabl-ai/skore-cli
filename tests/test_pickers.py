@@ -110,6 +110,7 @@ def test_harness_picker_copy_lists_all_harnesses():
     assert "Claude Plugin" in _HARNESS_HELP
     assert "Cursor IDE" in _HARNESS_HELP
     assert "Cursor CLI" in _HARNESS_HELP
+    assert "Copilot in VSCode" in _HARNESS_HELP
     assert "Copilot CLI" in _HARNESS_HELP
     assert "Codex CLI" in _HARNESS_HELP
 

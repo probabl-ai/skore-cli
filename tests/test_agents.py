@@ -192,7 +192,7 @@ def test_resolve_targets_copilot_project_only(tmp_path):
     local = resolve_targets(["github-copilot"], global_=False, home=home, cwd=project)
 
     assert local == [("github-copilot", project / ".github" / "skills")]
-    with pytest.raises(ValueError, match="GitHub Copilot has no user-level"):
+    with pytest.raises(ValueError, match="Copilot in VSCode has no user-level"):
         resolve_targets(["github-copilot"], global_=True, home=home, cwd=project)
 
 
@@ -253,7 +253,7 @@ def test_harness_display_name_uses_label():
     assert AGENTS["cursor"].harness_display_name == "Cursor IDE"
     assert AGENTS["cursor-cli"].harness_display_name == "Cursor CLI"
     assert AGENTS["codex"].harness_display_name == "Codex CLI"
-    assert AGENTS["github-copilot"].harness_display_name == "GitHub Copilot"
+    assert AGENTS["github-copilot"].harness_display_name == "Copilot in VSCode"
     assert AGENTS["github-copilot-cli"].harness_display_name == "Copilot CLI"
     assert AGENTS["agents"].harness_display_name == "Agents"
 
@@ -309,8 +309,8 @@ def test_resolve_skill_agent_requires_skill_directories():
 
 def test_missing_skills_directory_message_plural():
     assert (
-        _missing_skills_directory_message(["GitHub Copilot", "Other"], global_=True)
-        == "GitHub Copilot, Other have no user-level skills directories."
+        _missing_skills_directory_message(["Copilot in VSCode", "Other"], global_=True)
+        == "Copilot in VSCode, Other have no user-level skills directories."
     )
 
 

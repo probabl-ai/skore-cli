@@ -42,7 +42,7 @@ they do not take `--repo`.
 `agents` is the cross-client default (`.agents/skills`). Other names write the
 tool's native `SKILL.md` directory. Most global installs mirror that folder
 under your home directory; Windsurf uses `~/.codeium/windsurf/skills`, Amp uses
-`~/.config/agents/skills`, and GitHub Copilot has no user-level skills
+`~/.config/agents/skills`, and Copilot in VSCode has no user-level skills
 directory (`--global` is rejected). Bob Shell and Bob IDE share `.bob/skills`.
 
 ```bash
@@ -60,7 +60,7 @@ and harness, creates a workspace API key, writes the harness configuration and
 launches the agent. Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude CLI**,
 **Claude UI**, **Claude Plugin** (Cursor, VS Code, or VS Code Insiders),
 **Cursor IDE**, **Cursor CLI**, **OpenCode**,
-**Pi**, **GitHub Copilot**, **Copilot CLI** and **Codex CLI**
+**Pi**, **Copilot in VSCode**, **Copilot CLI** and **Codex CLI**
 (detected via `PATH`, the application bundle on macOS for Bob IDE and Claude UI,
 or the Claude Code extension for Claude Plugin). The interactive picker lists
 detected harnesses first, then the ones that are not installed.

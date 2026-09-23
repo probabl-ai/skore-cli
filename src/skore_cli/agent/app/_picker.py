@@ -32,7 +32,7 @@ Supported harnesses:
   • Cursor CLI   — writes .cursor/mcp.json
   • OpenCode     — writes opencode.json
   • Pi           — writes .pi/agent/models.json
-  • Copilot      — writes .vscode/chatLanguageModels.json
+  • Copilot in VSCode — writes .vscode/chatLanguageModels.json
   • Copilot CLI  — launches copilot with Hub provider env
   • Codex CLI    — writes .codex/skore-provider.toml (+ ~/.codex/config.toml)
 

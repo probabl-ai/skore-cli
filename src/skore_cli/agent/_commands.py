@@ -208,7 +208,7 @@ def agent(
 
     Supported harnesses: Bob Shell, Bob IDE, Claude CLI, Claude UI, Claude
     Plugin (Cursor, VS Code, or VS Code Insiders), Cursor IDE, Cursor CLI,
-    OpenCode, Pi, GitHub Copilot, Copilot CLI and Codex CLI.
+    OpenCode, Pi, Copilot in VSCode, Copilot CLI and Codex CLI.
     Detection uses ``PATH``, the application bundle on macOS for Bob IDE and
     Claude UI, or the Claude Code IDE extension for Claude Plugin. Claude CLI
     also accepts ``--harness claude-cli``. ``--harness claude-plugin`` asks

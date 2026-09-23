@@ -173,7 +173,7 @@ def test_install_copilot_global_errors(release, workspace):
     result = _invoke(["skills", "install", "alpha", "-a", "github-copilot", "-g"])
 
     assert result.exit_code != 0
-    assert "GitHub Copilot has no user-level skills directory" in _plain_output(
+    assert "Copilot in VSCode has no user-level skills directory" in _plain_output(
         result.output
     )
     assert not (workspace.home / ".github").exists()
@@ -632,7 +632,7 @@ def test_list_copilot_global_errors(release, workspace):
     result = _invoke(["skills", "list", "-a", "github-copilot", "-g"])
 
     assert result.exit_code != 0
-    assert "GitHub Copilot has no user-level skills directory" in _plain_output(
+    assert "Copilot in VSCode has no user-level skills directory" in _plain_output(
         result.output
     )
 

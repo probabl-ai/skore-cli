@@ -63,7 +63,7 @@ IDE_PLUGIN_LABELS = {
     "code": "VS Code",
     "code-insiders": "VS Code Insiders",
 }
-# GitHub Copilot
+# Copilot in VSCode
 COPILOT_PROVIDER_NAME = "Skore Agent"
 COPILOT_PROJECT_CONFIG = ".vscode/chatLanguageModels.json"
 COPILOT_BINARIES = ("code", "code-insiders")
@@ -382,7 +382,7 @@ def _copilot_provider(ctx: HarnessContext) -> dict[str, Any]:
 
 
 def _configure_copilot(ctx: HarnessContext) -> dict[str, Any]:
-    """Write ``.vscode/chatLanguageModels.json`` for GitHub Copilot in VS Code."""
+    """Write ``.vscode/chatLanguageModels.json`` for Copilot in VSCode."""
     from skore_cli._style import console
     from skore_cli.agent._skore_file import ensure_gitignore_entry
 
@@ -740,7 +740,7 @@ def _launch_copilot(workspace: Path, _model_id: str) -> None:
 
     binary = _resolve_copilot_binary()
     if binary is None:
-        raise RuntimeError("GitHub Copilot is not installed or not on PATH.")
+        raise RuntimeError("Copilot in VSCode is not installed or not on PATH.")
 
     # VS Code only reads providers from the user profile, so the project config
     # written by ``_configure_copilot`` has to be mirrored there.
@@ -997,7 +997,7 @@ AGENTS: dict[str, Agent] = {
     ),
     "github-copilot": Agent(
         name="github-copilot",
-        label="GitHub Copilot",
+        label="Copilot in VSCode",
         project_skills_dir=".github/skills",
         harness_name="copilot",
         harness_binaries=COPILOT_BINARIES,
