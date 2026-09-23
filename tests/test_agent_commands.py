@@ -370,6 +370,84 @@ def test_agent_hub_url_param_matching_saved_reuses_key(tmp_path, monkeypatch):
     assert saved["api_key"] == "secret-key"
 
 
+def test_agent_hub_url_trailing_slash_reuses_key(tmp_path, monkeypatch):
+    """A --hub-url equal modulo a trailing slash reuses the saved config."""
+    _write_skore(tmp_path)
+    _mock_harness_on_path(monkeypatch, "opencode")
+    monkeypatch.setattr(
+        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
+    )
+    logins = []
+    monkeypatch.setattr(
+        _commands, "_ensure_login", lambda hub_url, timeout: logins.append(hub_url)
+    )
+    monkeypatch.setattr(
+        _commands,
+        "launch_harness",
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+    )
+
+    result = CliRunner().invoke(
+        agent,
+        [
+            "--workspace",
+            str(tmp_path),
+            "--hub-url",
+            "http://hub.test/",
+            "--harness",
+            "opencode",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert logins == []
+    saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert saved["hub_url"] == "http://hub.test"
+    assert saved["api_key"] == "secret-key"
+
+
+def test_agent_hub_switch_non_interactive_reuses_saved_harness(tmp_path, monkeypatch):
+    """Switching hubs non-interactively without --harness keeps the saved one."""
+    _write_skore(tmp_path)
+    _mock_harness_on_path(monkeypatch, "opencode")
+    monkeypatch.setattr(
+        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
+    )
+    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
+    monkeypatch.setattr(
+        _commands._client,
+        "me",
+        lambda hub_url, token: ("user-1", [_membership()]),
+    )
+    monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
+    monkeypatch.setattr(_commands, "detect_agent", lambda: None)
+    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
+    created = []
+
+    def fake_create(*args, **kwargs):
+        created.append(kwargs)
+        return 42, "new-secret"
+
+    monkeypatch.setattr(_commands._client, "create_api_key", fake_create)
+    monkeypatch.setattr(
+        _commands,
+        "launch_harness",
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+    )
+
+    result = CliRunner().invoke(
+        agent,
+        ["--workspace", str(tmp_path), "--hub-url", "http://other.hub"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert created[0]["name"] == "opencode"
+    saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert saved["hub_url"] == "http://other.hub"
+    assert saved["harness"] == "opencode"
+    assert saved["api_key"] == "new-secret"
+
+
 def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     _mock_harness_on_path(monkeypatch, "opencode")
     monkeypatch.setattr(

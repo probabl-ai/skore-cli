@@ -206,18 +206,11 @@ def agent(
 
     config = SkoreConfig.load(workspace)
 
-    if (
-        config is not None
-        and config.api_key
-        and config.workspace
-        and (
-            hub_url is None
-            or resolve_hub_uri(hub_url, _auth) == resolve_hub_uri(config.hub_url, _auth)
-        )
+    # The saved hub_url is stored already resolved, so a raw match modulo a
+    # trailing slash means the same hub and reuses the saved credentials.
+    if config is not None and (
+        hub_url is None or hub_url.rstrip("/") == config.hub_url.rstrip("/")
     ):
-        resolved_hub_url = (
-            resolve_hub_uri(hub_url, _auth) if hub_url is not None else config.hub_url
-        )
         harness_name = harness_name or config.harness
     else:
         resolved_hub_url = resolve_hub_uri(hub_url, _auth)
@@ -228,40 +221,39 @@ def agent(
                 "you are not a member of any hub workspace; create or join one first."
             )
 
-        # A saved workspace only makes sense on the same hub; a different
-        # --hub-url means memberships were re-fetched for a new hub.
-        saved_workspace = config.workspace if config and hub_url is None else None
-        membership = _resolve_membership(memberships, saved_workspace)
+        # First run or hub switch: memberships were fetched just now, so a
+        # saved workspace id never applies.
+        membership = _resolve_membership(memberships, None)
 
-        if config is not None and config.api_key and hub_url is None:
-            # Invalid/partial config for the same hub: keep the saved key.
-            api_key = config.api_key
-        else:
-            if harness_name is None:
-                if is_non_interactive():
-                    detected = detect_agent()
-                    if (
-                        detected
-                        and detected.harness_name
-                        and is_harness_installed(detected)
-                    ):
-                        harness_name = detected.harness_name
-                    else:
-                        raise click.UsageError(
-                            "pass --harness to create an API key non-interactively."
-                        )
+        if harness_name is None:
+            if is_non_interactive():
+                detected = detect_agent()
+                if (
+                    detected
+                    and detected.harness_name
+                    and is_harness_installed(detected)
+                ):
+                    harness_name = detected.harness_name
+                elif config is not None and config.harness:
+                    # The harness is hub-independent: fall back to the saved
+                    # one before erroring out on a hub switch.
+                    harness_name = config.harness
                 else:
-                    harness_name = _pick_harness(workspace)
-            api_key = _create_workspace_api_key(
-                resolved_hub_url, token, user_id, membership, harness_name
-            )
+                    raise click.UsageError(
+                        "pass --harness to create an API key non-interactively."
+                    )
+            else:
+                harness_name = _pick_harness(workspace)
+        api_key = _create_workspace_api_key(
+            resolved_hub_url, token, user_id, membership, harness_name
+        )
 
         config = SkoreConfig(
             hub_url=resolved_hub_url,
             workspace=membership.public_id,
             workspace_id=membership.workspace_id,
             api_key=api_key,
-            harness=harness_name or (config.harness if config else None),
+            harness=harness_name,
         )
         config_path = config.save(workspace)
         ensure_gitignore_entry(workspace)
