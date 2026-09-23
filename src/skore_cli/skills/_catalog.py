@@ -1,4 +1,4 @@
-"""Fetch and parse the skill catalog from the ``probabl-ai/skills`` release."""
+"""Fetch and parse the skill catalog from a GitHub skills release."""
 
 from __future__ import annotations
 
@@ -12,6 +12,32 @@ from urllib.request import Request, urlopen
 
 GITHUB_REPO = "probabl-ai/skills"
 _USER_AGENT = "skore-skills-cli"
+CATALOG_FILENAMES = (".catalog.json", "catalog.json")
+
+
+def normalize_github_repo(value: str) -> str:
+    """Return a canonical ``owner/name`` GitHub repository identifier.
+
+    Parameters
+    ----------
+    value : str
+        User-supplied repository string, possibly with extra whitespace.
+
+    Returns
+    -------
+    str
+        ``owner/name`` with surrounding slashes and whitespace stripped.
+
+    Raises
+    ------
+    ValueError
+        If ``value`` is not exactly ``owner/name`` with both parts non-empty.
+    """
+    repo = value.strip().strip("/")
+    owner, sep, name = repo.partition("/")
+    if not sep or "/" in name or not owner or not name:
+        raise ValueError(f"GitHub repository must be owner/name, got {value!r}")
+    return f"{owner}/{name}"
 
 
 def _fetch_bytes(url: str) -> bytes:
@@ -78,7 +104,10 @@ def download_release(tag: str, repo: str = GITHUB_REPO) -> Path:
 
 
 def load_catalog(root: Path) -> dict[str, Any]:
-    """Load ``catalog.json`` from an extracted repository ``root``.
+    """Load the catalog JSON from an extracted repository ``root``.
+
+    Prefers ``.catalog.json`` and falls back to ``catalog.json`` so older
+    releases remain readable.
 
     Parameters
     ----------
@@ -88,9 +117,20 @@ def load_catalog(root: Path) -> dict[str, Any]:
     Returns
     -------
     dict
-        The parsed content of ``catalog.json``.
+        The parsed content of the catalog file.
+
+    Raises
+    ------
+    FileNotFoundError
+        If neither catalog filename is present under ``root``.
     """
-    return json.loads((root / "catalog.json").read_text())
+    for name in CATALOG_FILENAMES:
+        path = root / name
+        if path.is_file():
+            return json.loads(path.read_text())
+    raise FileNotFoundError(
+        f"No catalog file found in {root} (tried {', '.join(CATALOG_FILENAMES)})"
+    )
 
 
 def fetch_release(repo: str = GITHUB_REPO) -> tuple[str, Path, dict[str, Any]]:
@@ -108,7 +148,7 @@ def fetch_release(repo: str = GITHUB_REPO) -> tuple[str, Path, dict[str, Any]]:
     root : Path
         The path to the extracted repository root.
     catalog : dict
-        The parsed content of ``catalog.json``.
+        The parsed content of the catalog file.
     """
     tag = latest_release_tag(repo)
     root = download_release(tag, repo)

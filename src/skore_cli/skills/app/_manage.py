@@ -57,10 +57,17 @@ class InstalledSkillsPicker(App[list[str] | None]):
         HELP_BINDING,
     ]
 
-    def __init__(self, skill_ids: list[str], *, title: str) -> None:
+    def __init__(
+        self,
+        skill_ids: list[str],
+        *,
+        title: str,
+        sources: dict[str, str] | None = None,
+    ) -> None:
         super().__init__()
         self._skill_ids = skill_ids
         self._title = title
+        self._sources = sources or {}
         self.result: list[str] | None = None
 
     def compose(self) -> ComposeResult:
@@ -70,7 +77,17 @@ class InstalledSkillsPicker(App[list[str] | None]):
             yield Label(self._title, classes="picker-intro")
             yield Label(_INTRO, classes="picker-intro")
             skill_list = SelectionList[str](
-                *(Selection(skill_id, skill_id) for skill_id in self._skill_ids),
+                *(
+                    Selection(
+                        (
+                            f"{skill_id} ({self._sources[skill_id]})"
+                            if skill_id in self._sources
+                            else skill_id
+                        ),
+                        skill_id,
+                    )
+                    for skill_id in self._skill_ids
+                ),
                 id="sel-installed",
             )
             skill_list.border_title = "Installed skills"

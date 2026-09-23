@@ -30,12 +30,12 @@ def _ctx(workspace, **kwargs):
 @pytest.fixture(autouse=True)
 def no_bob_ide_app(tmp_path, monkeypatch):
     """Keep detection off the real machine: Bob IDE is found by its bundle on
-    macOS and by the ``bob-ide`` binary on other platforms."""
+    macOS and by the ``bobide`` binary on other platforms."""
     monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
     _real_which = _agents.shutil.which
 
     def _which(name):
-        if name == "bob-ide":
+        if name == "bobide":
             return None
         return _real_which(name)
 
@@ -102,12 +102,12 @@ def test_bob_ide_installed_by_app_bundle(tmp_path, monkeypatch):
 
 
 def test_bob_ide_installed_by_binary_on_non_darwin(tmp_path, monkeypatch):
-    """On non-macOS the IDE installs a ``bob-ide`` command on PATH."""
+    """On non-macOS the IDE installs a ``bobide`` command on PATH."""
     monkeypatch.setattr(_agents.sys, "platform", "linux")
     monkeypatch.setattr(
         _agents.shutil,
         "which",
-        lambda name: "/usr/bin/bob-ide" if name == "bob-ide" else None,
+        lambda name: "/usr/bin/bobide" if name == "bobide" else None,
     )
     assert is_harness_installed(AGENTS["bob-ide"]) is True
     assert [agent.harness_name for agent in installed_harnesses()] == ["bob-ide"]
@@ -124,7 +124,10 @@ def test_opencode_config_matches_hub_ui(tmp_path):
     assert config["$schema"] == "https://opencode.ai/config.json"
     assert config["model"] == "skore/skore-agent"
     assert config["provider"]["skore"]["name"] == "Skore Hub"
-    assert config["provider"]["skore"]["models"]["skore-agent"]["name"] == "Skore Agent"
+    model = config["provider"]["skore"]["models"]["skore-agent"]
+    assert model["name"] == "Skore Agent"
+    assert model["limit"] == {"context": 200000, "output": 8192}
+    assert "cost" not in model
 
 
 def test_opencode_writes_session_plugin(tmp_path):
@@ -144,6 +147,7 @@ def test_pi_config_matches_hub_ui(tmp_path):
     model = config["providers"]["skore"]["models"][0]
     assert model["id"] == "skore-agent"
     assert model["contextWindow"] == 200000
+    assert "cost" not in model
     compat = config["providers"]["skore"]["compat"]
     assert compat["sendSessionAffinityHeaders"] is True
     assert compat["sessionAffinityFormat"] == "openrouter"
@@ -413,11 +417,11 @@ def test_launch_bob_ide_uses_binary_on_non_darwin(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _agents.shutil,
         "which",
-        lambda name: "/usr/bin/bob-ide" if name == "bob-ide" else None,
+        lambda name: "/usr/bin/bobide" if name == "bobide" else None,
     )
     monkeypatch.setattr(_agents, "_exec_harness", fake_exec)
     _agents.launch_harness(AGENTS["bob-ide"], tmp_path)
-    assert captured["argv"] == ["bob-ide", str(tmp_path)]
+    assert captured["argv"] == ["bobide", str(tmp_path)]
 
 
 def test_launch_errors_when_binary_missing(tmp_path, monkeypatch):

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import shutil
+from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.css.query import NoMatches
 from textual.widgets import (
     Footer,
     Header,
@@ -19,8 +23,20 @@ from textual.widgets import (
 
 from skore_cli._agents import DEFAULT_AGENT, SKILL_AGENT_NAMES
 from skore_cli.app._banner import SkoreBanner
-from skore_cli.app._help import HELP_BINDING, HelpScreen
+from skore_cli.app._help import HELP_BINDING, HelpInput, HelpScreen
+from skore_cli.skills._catalog import (
+    GITHUB_REPO,
+    fetch_release,
+    normalize_github_repo,
+)
 from skore_cli.skills.app._widgets import AutoRadioSet, SkillSelection
+
+_SOURCE_INTRO = (
+    "GitHub repository that publishes the skills catalog (owner/name).\n"
+    "The default is probabl-ai/skills. Change it to install from a fork "
+    "or another catalog.\n"
+    "[reverse] Enter [/] load catalog  [reverse] ? [/] help"
+)
 
 _SKILLS_INTRO = (
     "Workflows bundle several related skills; selecting a workflow also selects "
@@ -44,11 +60,12 @@ _SCOPE_INTRO = (
 )
 
 _INSTALL_HELP = """\
-Install probabl-skills in three steps:
+Install skills in four steps:
 
-1. Pick workflows and/or individual skills
-2. Choose the target agent directory
-3. Choose project-local or global scope
+1. Choose the GitHub owner/name that publishes the catalog
+2. Pick workflows and/or individual skills
+3. Choose the target agent directory
+4. Choose project-local or global scope
 
 Keys:
   ↑/↓ Space move and (de)select
@@ -60,7 +77,7 @@ Keys:
 
 
 class ProbablSkillsInstaller(App[None]):
-    """A tabbed wizard to pick skills, target agents and the install scope."""
+    """A tabbed wizard to pick a GitHub source, skills, agents and scope."""
 
     CSS = """
     Screen {
@@ -78,6 +95,13 @@ class ProbablSkillsInstaller(App[None]):
         margin: 1 1;
         color: $text-muted;
     }
+    #repo {
+        margin: 0 1 1 1;
+        width: 100%;
+    }
+    #skills-host {
+        height: 1fr;
+    }
     AutoRadioSet {
         margin: 1 1;
         width: 100%;
@@ -94,27 +118,53 @@ class ProbablSkillsInstaller(App[None]):
 
     def __init__(
         self,
-        catalog: dict[str, Any],
         *,
         agent: tuple[str, ...],
         default_global: bool,
+        default_repo: str = GITHUB_REPO,
     ) -> None:
         super().__init__()
-        self._catalog = catalog
         self._agent_names_cli = list(agent)
         self._ask_agent = not agent
         self._default_global = default_global
-        self.result: tuple[list[str], list[str], bool] | None = None
+        self._default_repo = default_repo
+        self._repo: str | None = None
+        self._tag: str | None = None
+        self._root: Path | None = None
+        self._catalog: dict[str, Any] | None = None
+        self.result: tuple[list[str], list[str], bool, str] | None = None
+
+    @property
+    def tag(self) -> str | None:
+        """Return the fetched release tag, if any."""
+        return self._tag
+
+    @property
+    def root(self) -> Path | None:
+        """Return the extracted release root, if any."""
+        return self._root
+
+    @property
+    def catalog(self) -> dict[str, Any] | None:
+        """Return the fetched catalog, if any."""
+        return self._catalog
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="installer"):
             yield SkoreBanner()
             with TabbedContent(id="wizard"):
-                with TabPane("1 · Skills", id="step-skills"):
-                    yield SkillSelection(self._catalog, intro=_SKILLS_INTRO)
+                with TabPane("1 · Source", id="step-source"):
+                    yield Label(_SOURCE_INTRO, classes="step-intro")
+                    yield HelpInput(
+                        value=self._default_repo,
+                        placeholder="owner/name",
+                        id="repo",
+                    )
+                with TabPane("2 · Skills", id="step-skills"):
+                    yield Vertical(id="skills-host")
                 if self._ask_agent:
-                    with TabPane("2 · Agents", id="step-agents"):
+                    with TabPane("3 · Agents", id="step-agents"):
                         yield Label(_AGENTS_INTRO, classes="step-intro")
                         with AutoRadioSet(id="agents"):
                             for name in SKILL_AGENT_NAMES:
@@ -125,7 +175,8 @@ class ProbablSkillsInstaller(App[None]):
                                     else name
                                 )
                                 yield RadioButton(label, value=recommended)
-                with TabPane("3 · Scope", id="step-scope"):
+                scope_label = "4 · Scope" if self._ask_agent else "3 · Scope"
+                with TabPane(scope_label, id="step-scope"):
                     yield Label(_SCOPE_INTRO, classes="step-intro")
                     with AutoRadioSet(id="scope"):
                         yield RadioButton(
@@ -135,13 +186,16 @@ class ProbablSkillsInstaller(App[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one("#sel-workflows", SelectionList).focus()
+        self.query_one("#repo", HelpInput).focus()
 
     def action_show_help(self) -> None:
         self.push_screen(HelpScreen("Install skills", _INSTALL_HELP))
 
     def _selected_ids(self) -> list[str]:
-        return self.query_one(SkillSelection).selected_ids()
+        try:
+            return self.query_one(SkillSelection).selected_ids()
+        except NoMatches:
+            return []
 
     def _selected_agents(self) -> list[str]:
         index = self.query_one("#agents", AutoRadioSet).pressed_index
@@ -160,17 +214,74 @@ class ProbablSkillsInstaller(App[None]):
     def on_tabbed_content_tab_activated(
         self, event: TabbedContent.TabActivated
     ) -> None:
-        if event.tabbed_content.id == "wizard":
-            self._focus_active_step()
+        if event.tabbed_content.id != "wizard":
+            return
+        wizard = self.query_one("#wizard", TabbedContent)
+        if wizard.active != "step-source" and self._catalog is None:
+            wizard.active = "step-source"
+            self.notify("Confirm a GitHub source first.", severity="warning")
+            return
+        self._focus_active_step()
 
     def _focus_active_step(self) -> None:
         active = self.query_one("#wizard", TabbedContent).active
-        if active == "step-agents":
+        if active == "step-source":
+            self.query_one("#repo", HelpInput).focus()
+        elif active == "step-skills":
+            with suppress(NoMatches):
+                self.query_one("#sel-workflows", SelectionList).focus()
+        elif active == "step-agents":
             radio = self.query_one("#agents", AutoRadioSet)
             radio.select_index(SKILL_AGENT_NAMES.index(DEFAULT_AGENT))
         elif active == "step-scope":
             radio = self.query_one("#scope", AutoRadioSet)
             radio.select_index(1 if self._default_global else 0)
+
+    def _cleanup_release(self) -> None:
+        if self._root is not None:
+            shutil.rmtree(self._root.parent, ignore_errors=True)
+        self._root = None
+        self._tag = None
+        self._catalog = None
+        self._repo = None
+
+    async def _mount_skills(self, catalog: dict[str, Any]) -> None:
+        host = self.query_one("#skills-host", Vertical)
+        await host.remove_children()
+        await host.mount(SkillSelection(catalog, intro=_SKILLS_INTRO))
+
+    async def _load_source(self) -> bool:
+        raw = self.query_one("#repo", HelpInput).value
+        try:
+            repo = normalize_github_repo(raw)
+        except ValueError:
+            self.notify(
+                "GitHub repository must be owner/name.",
+                severity="warning",
+            )
+            return False
+
+        if self._repo == repo and self._catalog is not None:
+            return True
+
+        self.notify(f"Fetching latest skills release from {repo}...")
+        try:
+            tag, root, catalog = fetch_release(repo)
+        except (OSError, ValueError, KeyError) as error:
+            self.notify(
+                f"Could not fetch the latest skills release from GitHub "
+                f"({repo}): {error}",
+                severity="error",
+            )
+            return False
+
+        self._cleanup_release()
+        self._repo = repo
+        self._tag = tag
+        self._root = root
+        self._catalog = catalog
+        await self._mount_skills(catalog)
+        return True
 
     def _finish(self) -> None:
         self._ensure_scope_selected()
@@ -178,13 +289,20 @@ class ProbablSkillsInstaller(App[None]):
             self._selected_agents() if self._ask_agent else self._agent_names_cli
         )
         global_ = self.query_one("#scope", AutoRadioSet).pressed_index == 1
-        self.result = (self._selected_ids(), agent_names, global_)
+        assert self._repo is not None
+        self.result = (self._selected_ids(), agent_names, global_, self._repo)
         self.exit()
 
-    def action_confirm(self) -> None:
+    async def action_confirm(self) -> None:
         wizard = self.query_one("#wizard", TabbedContent)
         active = wizard.active
-        if active == "step-skills":
+        if active == "step-source":
+            if not await self._load_source():
+                return
+            wizard.active = "step-skills"
+            self._focus_active_step()
+            self.call_after_refresh(self._focus_active_step)
+        elif active == "step-skills":
             if not self._selected_ids():
                 self.notify(
                     "Select at least one workflow or skill.",
@@ -206,5 +324,6 @@ class ProbablSkillsInstaller(App[None]):
             self._finish()
 
     def action_cancel(self) -> None:
+        self._cleanup_release()
         self.result = None
         self.exit()

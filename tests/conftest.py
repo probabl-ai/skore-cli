@@ -1,6 +1,7 @@
 import copy
 import io
 import json
+import re
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -38,8 +39,10 @@ CATALOG = {
     ],
 }
 
+_REPO_URL = re.compile(r"https://api\.github\.com/repos/([^/]+/[^/]+)/")
 
-def _build_tarball(catalog):
+
+def _build_tarball(catalog, *, catalog_name=".catalog.json"):
     buffer = io.BytesIO()
     prefix = "probabl-ai-skills-test"
 
@@ -50,7 +53,7 @@ def _build_tarball(catalog):
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
 
-        add_bytes("catalog.json", json.dumps(catalog).encode())
+        add_bytes(catalog_name, json.dumps(catalog).encode())
         for skill in catalog["skills"]:
             content = f"# {skill['title']}\n".encode()
             add_bytes(f"{skill['path']}/SKILL.md", content)
@@ -69,15 +72,32 @@ def release_tarball(catalog_dict):
 
 
 @pytest.fixture
+def legacy_release_tarball(catalog_dict):
+    """Serve a release that still ships the pre-migration ``catalog.json``."""
+    return _build_tarball(catalog_dict, catalog_name="catalog.json")
+
+
+@pytest.fixture
 def release(monkeypatch):
-    """Serve a fake ``probabl-ai/skills`` release from an in-memory tarball."""
-    state = {"tag": "0.1.0", "catalog": copy.deepcopy(CATALOG)}
+    """Serve fake GitHub skills releases from in-memory tarballs."""
+    state = {
+        "tag": "0.1.0",
+        "catalog": copy.deepcopy(CATALOG),
+        "by_repo": {},
+        "urls": [],
+    }
 
     def fake_fetch(url):
+        state["urls"].append(url)
+        match = _REPO_URL.match(url)
+        repo = match.group(1) if match else _catalog.GITHUB_REPO
+        entry = state["by_repo"].get(
+            repo, {"tag": state["tag"], "catalog": state["catalog"]}
+        )
         if url.endswith("/releases/latest"):
-            return json.dumps({"tag_name": state["tag"]}).encode()
+            return json.dumps({"tag_name": entry["tag"]}).encode()
         if "/tarball/" in url:
-            return _build_tarball(state["catalog"])
+            return _build_tarball(entry["catalog"])
         raise AssertionError(f"unexpected url: {url}")
 
     monkeypatch.setattr(_catalog, "_fetch_bytes", fake_fetch)
@@ -94,6 +114,16 @@ def workspace(monkeypatch, tmp_path):
 
     monkeypatch.setattr(Path, "home", lambda: home)
     monkeypatch.chdir(project)
+    for var in (
+        "CLAUDECODE",
+        "CURSOR_AGENT",
+        "GEMINI_CLI",
+        "CODEX_SANDBOX",
+        "PI_CODING_AGENT",
+        "OPENCODE_CLIENT",
+        "CI",
+    ):
+        monkeypatch.delenv(var, raising=False)
 
     return SimpleNamespace(home=home, project=project)
 

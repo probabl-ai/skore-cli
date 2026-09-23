@@ -7,10 +7,12 @@ from skore_cli import _agents
 from skore_cli._agents import (
     AGENTS,
     DEFAULT_AGENT,
+    HARNESS_CHOICES,
     HARNESS_NAMES,
     SKILL_AGENT_NAMES,
     Agent,
     HarnessContext,
+    _missing_skills_directory_message,
     get_harness,
     installed_harnesses,
     is_harness_installed,
@@ -33,6 +35,13 @@ def test_agent_names_match_registry():
         "cursor",
         "codex",
         "gemini",
+        "windsurf",
+        "cline",
+        "roo",
+        "amp",
+        "github-copilot",
+        "bob",
+        "bob-ide",
     ]
 
 
@@ -47,6 +56,14 @@ def test_harness_names_come_from_registry():
         "bob",
         "bob-ide",
     ]
+
+
+def test_harness_choices_include_canonical_names_and_aliases():
+    assert HARNESS_CHOICES[-1] == "bobide"
+    assert "bob-ide" in HARNESS_CHOICES
+    assert HARNESS_CHOICES.count("bob-ide") == 1
+    assert HARNESS_CHOICES.count("bobide") == 1
+    assert all(name in HARNESS_CHOICES for name in HARNESS_NAMES)
 
 
 def test_harness_rows_are_complete():
@@ -113,6 +130,73 @@ def test_resolve_targets_deduplicates_by_directory(tmp_path):
     assert targets == [("agents", project / ".agents" / "skills")]
 
 
+def test_resolve_targets_windsurf_differs_by_scope(tmp_path):
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+
+    local = resolve_targets(["windsurf"], global_=False, home=home, cwd=project)
+    global_ = resolve_targets(["windsurf"], global_=True, home=home, cwd=project)
+
+    assert local == [("windsurf", project / ".windsurf" / "skills")]
+    assert global_ == [("windsurf", home / ".codeium" / "windsurf" / "skills")]
+
+
+def test_resolve_targets_amp_differs_by_scope(tmp_path):
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+
+    local = resolve_targets(["amp"], global_=False, home=home, cwd=project)
+    global_ = resolve_targets(["amp"], global_=True, home=home, cwd=project)
+
+    assert local == [("amp", project / ".agents" / "skills")]
+    assert global_ == [("amp", home / ".config" / "agents" / "skills")]
+
+
+def test_resolve_targets_bob_and_bob_ide_deduplicate(tmp_path):
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+
+    targets = resolve_targets(["bob", "bob-ide"], global_=False, home=home, cwd=project)
+
+    assert targets == [("bob", project / ".bob" / "skills")]
+
+
+def test_resolve_targets_copilot_project_only(tmp_path):
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+
+    local = resolve_targets(["github-copilot"], global_=False, home=home, cwd=project)
+
+    assert local == [("github-copilot", project / ".github" / "skills")]
+    with pytest.raises(ValueError, match="GitHub Copilot has no user-level"):
+        resolve_targets(["github-copilot"], global_=True, home=home, cwd=project)
+
+
+def test_resolve_targets_skips_copilot_global_when_requested(tmp_path):
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+
+    targets = resolve_targets(
+        ["github-copilot", "cursor"],
+        global_=True,
+        home=home,
+        cwd=project,
+        skip_missing=True,
+    )
+
+    assert targets == [("cursor", home / ".cursor" / "skills")]
+
+
 def test_resolve_targets_uses_defaults(monkeypatch, tmp_path):
     home = tmp_path / "home"
     project = tmp_path / "project"
@@ -164,6 +248,7 @@ def test_harness_registry_helpers(monkeypatch, tmp_path):
         get_harness("missing")
     assert normalize_harness_name(None) is None
     assert normalize_harness_name("claude-code") == "claude"
+    assert normalize_harness_name("bobide") == "bob-ide"
     assert normalize_harness_name("unknown") == "unknown"
     assert is_harness_installed(AGENTS["opencode"])
     assert not is_harness_installed(AGENTS["claude-code"])
@@ -175,6 +260,13 @@ def test_resolve_skill_agent_requires_skill_directories():
 
     with pytest.raises(ValueError, match="has no skills target"):
         resolve_skill_agent(agent)
+
+
+def test_missing_skills_directory_message_plural():
+    assert (
+        _missing_skills_directory_message(["GitHub Copilot", "Other"], global_=True)
+        == "GitHub Copilot, Other have no user-level skills directories."
+    )
 
 
 def test_launch_harness_validates_installation(monkeypatch, tmp_path):

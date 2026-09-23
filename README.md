@@ -31,12 +31,25 @@ pulls in `skore`). No extras are required.
 
 Install skills into the current project by default. Pass `--global`/`-g` for a
 user-wide install and `--agent`/`-a` to target specific agents (`agents`,
-`claude-code`, `cursor`, `codex`, `gemini`).
+`claude-code`, `cursor`, `codex`, `gemini`, `windsurf`, `cline`, `roo`, `amp`,
+`github-copilot`, `bob`, `bob-ide`). Pass `--repo owner/name` on
+**install** to pull from another GitHub catalog that ships `.catalog.json`
+(the default is `probabl-ai/skills`). Interactive `skore skills install` also
+lets you edit that `owner/name` in the wizard; `--repo` only pre-fills the
+field. `list` and `update` reuse the stored source and show it in their output;
+they do not take `--repo`.
+
+`agents` is the cross-client default (`.agents/skills`). Other names write the
+tool's native `SKILL.md` directory. Most global installs mirror that folder
+under your home directory; Windsurf uses `~/.codeium/windsurf/skills`, Amp uses
+`~/.config/agents/skills`, and GitHub Copilot has no user-level skills
+directory (`--global` is rejected). Bob Shell and Bob IDE share `.bob/skills`.
 
 ```bash
-skore skills list          # list installed skills
+skore skills list          # list installed skills (with source)
 skore skills install       # install skills (interactive or by id)
-skore skills update        # update installed skills
+skore skills install --repo acme/skills gamma
+skore skills update        # update from each skill's recorded source
 skore skills remove        # remove installed skills
 ```
 
@@ -46,7 +59,9 @@ On the first run, `skore agent` logs in when needed, lets you pick a workspace
 and harness, creates a workspace API key, writes the harness configuration and
 launches the agent. Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude**,
 **Cursor**, **OpenCode**, **Pi**, **GitHub Copilot** and **Codex** (all must be on
-`PATH`; on macOS, Bob IDE is found via its application bundle). Later runs reuse
+`PATH`; on macOS, Bob IDE is found via its application bundle). Bob IDE also
+accepts `--harness bobide` — the name of the command its installer puts on
+`PATH` — as an alias for `--harness bob-ide`. Later runs reuse
 `.skore` in the project directory (gitignored); passing `--hub-url` or
 `--harness` re-writes `.skore` with the new values (a different `--hub-url` also
 mints a fresh API key against that hub). Use `SKORE_HUB_URI` (or `--hub-url`)

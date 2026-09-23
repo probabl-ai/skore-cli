@@ -206,4 +206,13 @@ uv.lock
 mlflow.db
 mlruns
 
-.claude
+# CLI generated folders
+.claude/
+.cursor/
+.bob/
+.vscode/
+.opencode/
+opencode.json
+.pi/
+.codex/
+.skore
