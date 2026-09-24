@@ -130,9 +130,55 @@ def workspace(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def monkeypatch_tmpdir(monkeypatch, tmp_path):
+    """
+    Change ``TMPDIR`` used by ``tempfile.gettempdir()`` to point to ``tmp_path``, so
+    that it is automatically deleted after use, with no impact on user's environment.
+
+    Force the reload of the ``tempfile`` module to change the cached return of
+    ``tempfile.gettempdir()``.
+
+    https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir
+    """
+    import importlib
+    import tempfile
+
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    importlib.reload(tempfile)
+
+
+@pytest.fixture
+def monkeypatch_home(monkeypatch, tmp_path):
+    """
+    Change ``HOME`` used by ``os.path.expanduser()`` to point to ``tmp_path``, so
+    that it is automatically deleted after use, with no impact on user's environment.
+
+    https://docs.python.org/3/library/os.path.html#os.path.expanduser
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+
+@pytest.fixture
+def monkeypatch_keyring(monkeypatch):
+    """
+    Make the system keyring unavailable, so that tests can't read and write into the
+    user's real keyring.
+
+    Force a re-init of the keyring backend, ``keyring.get_keyring()`` caching the
+    backend in ``keyring.core``.
+
+    https://github.com/jaraco/keyring#disabling-keyring
+    https://github.com/jaraco/keyring/blob/7603e7cadc254b4c6e3fc2b2f0916a005e78087d/keyring/core.py#L32
+    """
+    import keyring.core
+
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
+    keyring.core.init_backend()
+
+
+@pytest.fixture(autouse=True)
 def monkeypatch_sdk_env(monkeypatch):
     """Unset the SDK credential variables."""
-    from skore_cli._agents import SDK_API_KEY_ENV, SDK_URI_ENV
-
-    monkeypatch.delenv(SDK_API_KEY_ENV, raising=False)
-    monkeypatch.delenv(SDK_URI_ENV, raising=False)
+    monkeypatch.delenv("SKORE_HUB_API_KEY", raising=False)
+    monkeypatch.delenv("SKORE_HUB_URI", raising=False)

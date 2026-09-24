@@ -1,4 +1,4 @@
-"""Tests for the thin hub HTTP client backing ``skore agent``."""
+"""Tests for the thin hub HTTP client backing ``skore hub``."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import httpx
 import pytest
 import rich_click as click
 
-from skore_cli.agent import _client
-from skore_cli.agent._client import ApiKeyInfo, Membership
+from skore_cli.hub import _client
+from skore_cli.hub._client import ApiKeyInfo, Membership
 
 
 def _transport(handler):
@@ -217,3 +217,37 @@ def test_error_uses_no_details_when_body_empty():
         )
 
     assert "no details" in str(excinfo.value)
+
+
+# --------------------------------------------------------------------------- #
+# delete_api_key
+# --------------------------------------------------------------------------- #
+
+
+def test_delete_api_key_sends_delete():
+    def handler(request):
+        assert request.method == "DELETE"
+        assert request.url.path == "/identity/users/user-1/api-keys/42"
+        return httpx.Response(204)
+
+    _client.delete_api_key(
+        "http://hub.test",
+        "tok",
+        "user-1",
+        42,
+        transport=_transport(handler),
+    )
+
+
+def test_delete_api_key_maps_not_found():
+    def handler(request):
+        return httpx.Response(404, json={"detail": "missing"})
+
+    with pytest.raises(click.ClickException, match="not found"):
+        _client.delete_api_key(
+            "http://hub.test",
+            "tok",
+            "user-1",
+            42,
+            transport=_transport(handler),
+        )

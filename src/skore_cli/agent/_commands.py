@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import rich_click as click
@@ -23,19 +24,11 @@ from skore_cli._agents import (
     normalize_harness_name,
     resolve_claude_plugin_harness,
 )
-from skore_cli._hub_auth import ensure_login
-from skore_cli._skore import URI_ENV, resolve_hub_uri
-from skore_cli._skore import auth as _auth
 from skore_cli._style import console
-from skore_cli.agent import _client
 from skore_cli.agent._skore_file import SkoreConfig, ensure_gitignore_entry
-
-PROJECT_PERMISSIONS = (
-    "create:project",
-    "read:project",
-    "update:project",
-    "delete:project",
-)
+from skore_cli.hub import _client
+from skore_cli.hub._commands import _registry, generate
+from skore_cli.hub.login import login
 
 
 def _pick_workspace(
@@ -84,79 +77,46 @@ def _pick_harness(workspace: Path) -> str:
     return app.result
 
 
-def _resolve_api_key_name(harness: str, existing_names: list[str]) -> str:
-    if harness not in existing_names:
-        return harness
-    index = 2
-    while f"{harness}-{index}" in existing_names:
-        index += 1
-    return f"{harness}-{index}"
+def _api_key_for(ctx, config: SkoreConfig, *, login_timeout: int) -> str:
+    """Return the workspace API key, minting one through ``generate`` if absent."""
+    registry = _registry()
+    api_key = registry.get(host=config.hub_url, workspace=config.workspace)
 
+    if api_key:
+        return api_key
 
-def _ensure_login(hub_url: str, *, timeout: int) -> str:
-    """Return a bearer token, running interactive login when needed."""
-    return ensure_login(timeout=timeout)
+    ctx.invoke(
+        generate,
+        host=config.hub_url,
+        workspace=config.workspace,
+        name=None,
+        login_timeout=login_timeout,
+    )
 
+    api_key = registry.get(host=config.hub_url, workspace=config.workspace)
 
-def _create_workspace_api_key(
-    hub_url: str,
-    token: str,
-    user_id: str,
-    membership: _client.Membership,
-    harness: str,
-) -> str:
-    """Mint a workspace-scoped API key for the chosen harness."""
-    grantable = set(membership.permissions)
-    permissions = [p for p in PROJECT_PERMISSIONS if p in grantable]
-    if not permissions:
+    if not api_key:
         raise click.ClickException(
-            f"you cannot create project API keys in workspace '{membership.public_id}'."
+            f"could not read an API key for workspace '{config.workspace}'."
         )
 
-    existing = _client.list_api_keys(hub_url, token, user_id)
-    workspace_names = [
-        key.name or ""
-        for key in existing
-        if key.workspace_id == membership.workspace_id
-    ]
-    key_name = _resolve_api_key_name(harness, workspace_names)
-    _api_key_id, secret = _client.create_api_key(
-        hub_url,
-        token,
-        user_id,
-        name=key_name,
-        permissions=permissions,
-        workspace_id=membership.workspace_id,
-        expires_at=None,
-    )
-    return secret
+    return api_key
 
 
 def _resolve_membership(
     memberships: list[_client.Membership],
-    workspace_public_id: str | None,
 ) -> _client.Membership:
-    if workspace_public_id is None:
-        if len(memberships) == 1:
-            return memberships[0]
-        if is_non_interactive():
-            raise click.UsageError(
-                "pass a saved workspace in .skore or run interactively to pick one."
-            )
-        return _pick_workspace(memberships)
-
-    membership = next(
-        (m for m in memberships if m.public_id == workspace_public_id),
-        None,
-    )
-    if membership is None:
-        raise click.ClickException(
-            f"workspace '{workspace_public_id}' is not in your memberships."
+    if len(memberships) == 1:
+        return memberships[0]
+    if is_non_interactive():
+        raise click.UsageError(
+            "pass a saved workspace in .skore or run interactively to pick one."
         )
-    return membership
+    return _pick_workspace(memberships)
 
 
 @click.command()
+@click.pass_context
 @click.option(
     "--workspace",
     "-w",
@@ -169,7 +129,7 @@ def _resolve_membership(
     default=None,
     help=(
         "Base URL of the hub (e.g. http://127.0.0.1:8000). Defaults to the "
-        f"{URI_ENV} env var or the public hub."
+        "SKORE_HUB_URI env var or the public hub."
     ),
 )
 @click.option(
@@ -193,6 +153,7 @@ def _resolve_membership(
     help="Seconds to wait for interactive device login.",
 )
 def agent(
+    ctx,
     workspace: Path,
     hub_url: str | None,
     harness_name: str | None,
@@ -202,9 +163,9 @@ def agent(
     """Authenticate, configure and launch a Skore Hub agent harness.
 
     On the first run, ``skore agent`` logs in to the hub (when needed), lets
-    you pick a workspace and harness, creates a workspace API key, writes the
-    harness config, and launches the agent. Later runs reuse ``.skore`` in the
-    project directory.
+    you pick a workspace and harness, and saves the workspace and hub URI to
+    ``.skore``. The API key itself comes from ``skore hub api-key generate``,
+    which is run automatically when no key is stored for that workspace.
 
     Supported harnesses: Bob Shell, Bob IDE, Claude CLI, Claude UI, Claude
     Plugin (Cursor, VS Code, or VS Code Insiders), Cursor IDE, Cursor CLI,
@@ -223,57 +184,44 @@ def agent(
 
     config = SkoreConfig.load(workspace)
 
-    if config is not None and config.api_key and config.workspace:
-        resolved_hub_url = (
-            resolve_hub_uri(hub_url, _auth) if hub_url is not None else config.hub_url
-        )
+    if hub_url:
+        os.environ["SKORE_HUB_URI"] = hub_url
+
+        if config is not None:
+            from skore._plugins.hub.authentication import URI
+
+            config = SkoreConfig(
+                hub_url=URI(),
+                workspace=config.workspace,
+                workspace_id=config.workspace_id,
+                harness=config.harness,
+            )
+
+    if config is not None and config.workspace:
         harness_name = harness_name or config.harness
     else:
-        resolved_hub_url = resolve_hub_uri(hub_url, _auth)
-        token = _ensure_login(resolved_hub_url, timeout=login_timeout)
-        user_id, memberships = _client.me(resolved_hub_url, token)
+        from skore._plugins.hub.authentication import URI
+
+        resolved_hub_url = URI()
+        token = login(timeout=login_timeout)
+        _, memberships = _client.me(resolved_hub_url, token.access)
         if not memberships:
             raise click.ClickException(
                 "you are not a member of any hub workspace; create or join one first."
             )
 
-        saved_workspace = config.workspace if config else None
-        membership = _resolve_membership(memberships, saved_workspace)
-
-        if config is None or not config.api_key:
-            if harness_name is None:
-                if is_non_interactive():
-                    detected = detect_agent()
-                    if (
-                        detected
-                        and detected.harness_name
-                        and is_harness_installed(detected)
-                    ):
-                        harness_name = detected.harness_name
-                    else:
-                        raise click.UsageError(
-                            "pass --harness to create an API key non-interactively."
-                        )
-                else:
-                    harness_name = _pick_harness(workspace)
-            if harness_name == "claude-plugin" or claude_plugin_ide_ready(harness_name):
-                harness_name = resolve_claude_plugin_harness(harness_name)
-            api_key = _create_workspace_api_key(
-                resolved_hub_url, token, user_id, membership, harness_name
-            )
-        else:
-            api_key = config.api_key
-
+        membership = _resolve_membership(memberships)
         config = SkoreConfig(
             hub_url=resolved_hub_url,
             workspace=membership.public_id,
             workspace_id=membership.workspace_id,
-            api_key=api_key,
-            harness=harness_name or (config.harness if config else None),
+            harness=harness_name,
         )
         config_path = config.save(workspace)
         ensure_gitignore_entry(workspace)
         console.print(f"[skore.ok]+[/] saved [skore.path]{config_path}[/]")
+
+    api_key = _api_key_for(ctx, config, login_timeout=login_timeout)
 
     if harness_name is None:
         if is_non_interactive():
@@ -297,7 +245,6 @@ def agent(
             hub_url=config.hub_url,
             workspace=config.workspace,
             workspace_id=config.workspace_id,
-            api_key=config.api_key,
             harness=harness_name,
         )
         config.save(workspace)
@@ -311,7 +258,7 @@ def agent(
         HarnessContext(
             workspace=workspace,
             hub_url=config.hub_url,
-            api_key=config.api_key,
+            api_key=api_key,
             model_id=model_id,
         )
     )

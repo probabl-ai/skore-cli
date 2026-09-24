@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import rich_click as click
 
 import skore_cli._style  # noqa: F401  (applies the CLI palette and rich-click config)
@@ -18,6 +20,7 @@ from skore_cli._style import SKORE_BANNER, console
 # importing them (to build the CLI / show `--help`) stays instant. Each merges its
 # own `rich_click.COMMAND_GROUPS` entry, so import order does not matter.
 from skore_cli.agent import agent
+from skore_cli.hub import hub
 from skore_cli.skills import skills
 from skore_cli.sync import sync
 
@@ -25,6 +28,7 @@ click.rich_click.COMMAND_GROUPS = {
     **getattr(click.rich_click, "COMMAND_GROUPS", {}),
     "cli": [
         {"name": "Agent", "commands": ["agent"]},
+        {"name": "Hub", "commands": ["hub"]},
         {"name": "Projects", "commands": ["sync"]},
         {"name": "Skills", "commands": ["skills"]},
     ],
@@ -32,6 +36,7 @@ click.rich_click.COMMAND_GROUPS = {
 
 _COMMANDS = [
     ("agent", "Authenticate, configure and launch a Skore Hub agent harness."),
+    ("hub", "Manage Skore Hub credentials."),
     ("skills", "Install and manage Agent Skills from the probabl-ai/skills release."),
     ("sync", "Synchronize report projects across local storage, Skore Hub and MLflow."),
 ]
@@ -86,8 +91,9 @@ def _render_help(detected: Agent | None) -> str:
 def cli(ctx) -> None:
     """Skore command-line interface.
 
-    Use ``skore agent`` to connect a project to the Skore Hub agent, ``skore sync``
-    to synchronize report projects, and ``skore skills`` to install probabl-skills.
+    Use ``skore agent`` to connect a project to the Skore Hub agent, ``skore hub``
+    to manage Hub credentials, ``skore sync`` to synchronize report projects, and
+    ``skore skills`` to install probabl-skills.
     """
     if ctx.invoked_subcommand is None:
         if is_non_interactive():
@@ -99,9 +105,17 @@ def cli(ctx) -> None:
 
 cli.add_command(skills)
 cli.add_command(agent)
+cli.add_command(hub)
 cli.add_command(sync)
 
 # Commands contributed by other packages via the `skore_cli.plugins` entry-point
 # group. Kept for third-party extensibility; the built-in `agent` command no
 # longer goes through it so the CLI never imports `skore` just to show help.
 load_plugins(cli)
+
+# Ensure ``skore`` is available without importing it explicitly
+if importlib.util.find_spec("skore") is None:
+    raise click.ClickException(
+        "this command needs the `skore` package (install it with `pip install "
+        "skore-cli` or `pip install skore`)."
+    )

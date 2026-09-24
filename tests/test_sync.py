@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -39,23 +38,18 @@ class _Project:
 @pytest.fixture
 def projects(monkeypatch):
     created = []
-    logins = []
 
     def project(name, *, mode, **kwargs):
         instance = _Project(name=name, mode=mode, **kwargs)
         created.append(instance)
         return instance
 
-    def login(*, mode):
-        logins.append(mode)
-
-    monkeypatch.setattr(_commands, "_project_api", lambda: (project, login))
-    monkeypatch.setattr(_commands, "resolve_hub_uri", lambda _: "http://hub.test")
-    return created, logins
+    monkeypatch.setattr("skore.Project", project)
+    return created
 
 
 def test_sync_defaults_source_to_local_and_forwards_options(projects):
-    created, logins = projects
+    created = projects
 
     result = CliRunner().invoke(
         sync,
@@ -69,12 +63,11 @@ def test_sync_defaults_source_to_local_and_forwards_options(projects):
         ("experiment", "hub", "team"),
     ]
     assert created[0].sync_args == (created[1], True, True)
-    assert logins == ["hub"]
     assert "Dry run complete" in result.output
 
 
 def test_sync_defaults_destination_to_local_with_custom_name(projects):
-    created, _ = projects
+    created = projects
 
     result = CliRunner().invoke(
         sync,
@@ -96,7 +89,7 @@ def test_sync_defaults_destination_to_local_with_custom_name(projects):
 
 
 def test_sync_uses_one_mlflow_tracking_uri(projects):
-    created, _ = projects
+    created = projects
 
     result = CliRunner().invoke(
         sync,
@@ -143,7 +136,7 @@ def test_sync_validates_options(args, message):
 
 
 def test_sync_rejects_same_endpoint_before_construction(projects):
-    created, _ = projects
+    created = projects
 
     result = CliRunner().invoke(sync, ["experiment", "--from=local", "--to=local"])
 
@@ -181,51 +174,19 @@ def test_sync_transfers_between_real_local_projects(tmp_path):
     assert destination.summarize().frame()["key"].tolist() == ["model"]
 
 
-def test_sync_requires_hub_api_key():
+def test_sync_hub_does_not_require_env_api_key(projects):
+    created = projects
+
     result = CliRunner().invoke(
         sync,
         ["experiment", "--to=hub", "--to-workspace=team"],
     )
 
-    assert result.exit_code != 0
-    assert "SKORE_HUB_API_KEY" in result.output
-
-
-def test_sync_requires_skore_with_sync(monkeypatch):
-    monkeypatch.setattr(
-        _commands.importlib,
-        "import_module",
-        lambda _: SimpleNamespace(Project=object),
-    )
-
-    result = CliRunner().invoke(sync, ["experiment", "--to=mlflow"])
-
-    assert result.exit_code != 0
-    assert "skore>=0.24.0" in result.output
-
-
-def test_project_api_imports_supported_skore(monkeypatch):
-    project = type("Project", (), {"sync": None})
-    login = object()
-    monkeypatch.setattr(
-        _commands.importlib,
-        "import_module",
-        lambda _: SimpleNamespace(Project=project, login=login),
-    )
-
-    assert _commands._project_api() == (project, login)
-
-
-def test_sync_requires_skore(monkeypatch):
-    def import_skore(_):
-        raise ImportError
-
-    monkeypatch.setattr(_commands.importlib, "import_module", import_skore)
-
-    result = CliRunner().invoke(sync, ["experiment", "--to=mlflow"])
-
-    assert result.exit_code != 0
-    assert "needs the `skore` package" in result.output
+    assert result.exit_code == 0, result.output
+    assert [(project.name, project.mode, project.workspace) for project in created] == [
+        ("experiment", "local", None),
+        ("experiment", "hub", "team"),
+    ]
 
 
 def test_sync_reports_empty_result(capsys):
@@ -238,7 +199,7 @@ def test_sync_converts_backend_errors(monkeypatch):
     def project(*args, **kwargs):
         raise RuntimeError("backend error")
 
-    monkeypatch.setattr(_commands, "_project_api", lambda: (project, None))
+    monkeypatch.setattr("skore.Project", project)
 
     result = CliRunner().invoke(sync, ["experiment", "--to=mlflow"])
 
