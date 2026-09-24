@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import calendar
 import os
+from datetime import datetime, timezone
 
 import rich_click as click
 from rich.table import Table
@@ -60,12 +62,39 @@ def _resolve_api_key_name(base: str, existing_names: list[str]) -> str:
     return f"{base}-{index}"
 
 
+def _add_calendar_months(when: datetime, months: int) -> datetime:
+    """Add ``months`` to ``when``, clamping the day like date-fns ``addMonths``."""
+    month = when.month - 1 + months
+    year = when.year + month // 12
+    month = month % 12 + 1
+    day = min(when.day, calendar.monthrange(year, month)[1])
+    return when.replace(year=year, month=month, day=day)
+
+
+def _expires_at_from_months(months: int, *, now: datetime | None = None) -> str:
+    """Return an ISO-8601 UTC instant ``months`` calendar months after ``now``."""
+    when = now or datetime.now(timezone.utc)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    else:
+        when = when.astimezone(timezone.utc)
+    expiry = _add_calendar_months(when, months)
+    return expiry.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _expires_at_from_choice(choice: str) -> str | None:
+    if choice == "never":
+        return None
+    return _expires_at_from_months(int(choice))
+
+
 def _create_workspace_api_key(
     hub_url: str,
     token: str,
     user_id: str,
     membership: _client.Membership,
     name: str,
+    expires_at: str | None = None,
 ) -> str:
     """Mint a workspace-scoped API key."""
     grantable = set(membership.permissions)
@@ -89,7 +118,7 @@ def _create_workspace_api_key(
         name=key_name,
         permissions=permissions,
         workspace_id=membership.workspace_id,
-        expires_at=None,
+        expires_at=expires_at,
     )
     return secret
 
@@ -127,8 +156,19 @@ def api_key(ctx) -> None:
     show_default=True,
     help="Seconds to wait for interactive device login.",
 )
+@click.option(
+    "--expires",
+    type=click.Choice(["1", "3", "6", "never"]),
+    default="never",
+    show_default=True,
+    help="Lifetime in months (1, 3, or 6 months), or never.",
+)
 def generate(
-    host: str | None, workspace: str, name: str | None, login_timeout: int
+    host: str | None,
+    workspace: str,
+    name: str | None,
+    login_timeout: int,
+    expires: str,
 ) -> None:
     """Mint a workspace-scoped Hub API key and store it locally."""
     if host:
@@ -141,10 +181,22 @@ def generate(
             "you are not a member of any hub workspace; create or join one first."
         )
     membership = _membership_for(memberships, workspace)
+    expires_at = _expires_at_from_choice(expires)
     secret = _create_workspace_api_key(
-        hub_url, token.access, user_id, membership, name or workspace
+        hub_url,
+        token.access,
+        user_id,
+        membership,
+        name or workspace,
+        expires_at=expires_at,
     )
     _registry().set(host=hub_url, workspace=workspace, api_key=secret)
+    if expires_at:
+        console.print(
+            f"[skore.ok]+[/] generated API key for workspace "
+            f"[skore.skill]{workspace}[/] (expires {expires_at})"
+        )
+        return
     console.print(
         f"[skore.ok]+[/] generated API key for workspace [skore.skill]{workspace}[/]"
     )

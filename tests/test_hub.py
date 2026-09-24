@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -122,6 +123,7 @@ def test_create_workspace_api_key_mints_secret(monkeypatch):
 
     assert secret == "the-secret"
     assert captured["name"] == "opencode"
+    assert captured["expires_at"] is None
     assert set(captured["permissions"]) == set(PROJECT_PERMISSIONS)
 
 
@@ -161,6 +163,16 @@ def test_create_workspace_api_key_dedupes_name_within_workspace(monkeypatch):
     assert captured["name"] == "opencode-2"
 
 
+def test_expires_at_from_months_clamps_end_of_month():
+    now = datetime(2026, 1, 31, 12, 0, 0, tzinfo=timezone.utc)
+    assert _hub._expires_at_from_months(1, now=now) == "2026-02-28T12:00:00Z"
+    assert _hub._expires_at_from_months(3, now=now) == "2026-04-30T12:00:00Z"
+
+
+def test_expires_at_from_choice_never_is_none():
+    assert _hub._expires_at_from_choice("never") is None
+
+
 def test_hub_api_key_generate_requires_workspace():
     result = _invoke(["hub", "api-key", "generate"])
 
@@ -175,14 +187,61 @@ def test_hub_api_key_generate_stores_key(monkeypatch):
         _hub._client, "me", lambda hub_url, token: ("user-1", [_membership("team")])
     )
     monkeypatch.setattr(_hub._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _hub._client, "create_api_key", lambda *a, **k: (42, "minted-secret")
-    )
+    captured = {}
+
+    def fake_create(*a, **k):
+        captured.update(k)
+        return 42, "minted-secret"
+
+    monkeypatch.setattr(_hub._client, "create_api_key", fake_create)
 
     result = _invoke(["hub", "api-key", "generate", "--workspace=team"])
 
     assert result.exit_code == 0, result.output
     assert registry.get(host="http://hub.test", workspace="team") == "minted-secret"
+    assert captured["expires_at"] is None
+    assert "expires " not in result.output
+
+
+def test_hub_api_key_generate_expires_in_three_months(monkeypatch):
+    now = datetime(2026, 1, 15, 8, 30, 0, tzinfo=timezone.utc)
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is None else now.astimezone(tz)
+
+    monkeypatch.setattr(_hub, "_host", lambda host: host or "http://hub.test")
+    monkeypatch.setattr(_hub, "login", lambda *, timeout: SimpleNamespace(access="tok"))
+    monkeypatch.setattr(
+        _hub._client, "me", lambda hub_url, token: ("user-1", [_membership("team")])
+    )
+    monkeypatch.setattr(_hub._client, "list_api_keys", lambda *a, **k: [])
+    captured = {}
+
+    def fake_create(*a, **k):
+        captured.update(k)
+        return 42, "minted-secret"
+
+    monkeypatch.setattr(_hub._client, "create_api_key", fake_create)
+    monkeypatch.setattr(_hub, "datetime", _FrozenDateTime)
+
+    result = _invoke(
+        ["hub", "api-key", "generate", "--workspace=team", "--expires", "3"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["expires_at"] == "2026-04-15T08:30:00Z"
+    assert "expires 2026-04-15T08:30:00Z" in result.output
+
+
+def test_hub_api_key_generate_rejects_unknown_expires(monkeypatch):
+    result = _invoke(
+        ["hub", "api-key", "generate", "--workspace=team", "--expires", "12"]
+    )
+
+    assert result.exit_code != 0
+    assert "expires" in result.output.lower()
 
 
 def test_hub_api_key_generate_unknown_workspace(monkeypatch):

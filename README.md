@@ -97,6 +97,7 @@ generating or deleting a key.
 
 ```bash
 skore hub api-key generate --workspace=<workspace>
+skore hub api-key generate --workspace=<workspace> --expires 3
 skore hub api-key generate --host=<host> --workspace=<workspace>
 skore hub api-key delete --workspace=<workspace>
 skore hub api-key delete --host=<host> --workspace=<workspace>
