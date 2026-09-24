@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import calendar
 import os
+import re
+import socket
 from datetime import datetime, timezone
 
 import rich_click as click
@@ -53,13 +55,44 @@ def _host(host: str | None) -> str:
     return host or URI()
 
 
-def _resolve_api_key_name(base: str, existing_names: list[str]) -> str:
-    if base not in existing_names:
-        return base
-    index = 2
-    while f"{base}-{index}" in existing_names:
-        index += 1
-    return f"{base}-{index}"
+def _sanitize_hostname(hostname: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", hostname).strip("-.")
+    return cleaned or "host"
+
+
+def _default_api_key_name(workspace: str) -> str:
+    hostname = _sanitize_hostname(socket.gethostname())
+    return f"{workspace}-{hostname}"[:150]
+
+
+def _stored_api_key_id(*, host: str, workspace: str) -> int | None:
+    """Return the Hub id stored for this host/workspace, if any."""
+    registry = _registry()
+    secret = registry.get(host=host, workspace=workspace)
+    api_key_id = registry.get_api_key_id(host=host, workspace=workspace)
+    if secret is None and api_key_id is None:
+        return None
+    if secret is None or api_key_id is None:
+        raise click.ClickException(
+            f"the stored API key for workspace '{workspace}' is incomplete; "
+            "delete the local entry and generate a new key."
+        )
+    return api_key_id
+
+
+def _revoke_stored_api_key(
+    hub_url: str,
+    token: str,
+    user_id: str,
+    workspace: str,
+) -> bool:
+    """Revoke the locally stored Hub key. Return whether a key was stored."""
+    api_key_id = _stored_api_key_id(host=hub_url, workspace=workspace)
+    if api_key_id is None:
+        return False
+    _client.delete_api_key(hub_url, token, user_id, api_key_id)
+    _registry().delete(host=hub_url, workspace=workspace)
+    return True
 
 
 def _add_calendar_months(when: datetime, months: int) -> datetime:
@@ -95,7 +128,7 @@ def _create_workspace_api_key(
     membership: _client.Membership,
     name: str,
     expires_at: str | None = None,
-) -> str:
+) -> tuple[int, str]:
     """Mint a workspace-scoped API key."""
     grantable = set(membership.permissions)
     permissions = [p for p in PROJECT_PERMISSIONS if p in grantable]
@@ -104,23 +137,15 @@ def _create_workspace_api_key(
             f"you cannot create project API keys in workspace '{membership.public_id}'."
         )
 
-    existing = _client.list_api_keys(hub_url, token, user_id)
-    workspace_names = [
-        key.name or ""
-        for key in existing
-        if key.workspace_id == membership.workspace_id
-    ]
-    key_name = _resolve_api_key_name(name, workspace_names)
-    _api_key_id, secret = _client.create_api_key(
+    return _client.create_api_key(
         hub_url,
         token,
         user_id,
-        name=key_name,
+        name=name,
         permissions=permissions,
         workspace_id=membership.workspace_id,
         expires_at=expires_at,
     )
-    return secret
 
 
 def _membership_for(
@@ -148,7 +173,7 @@ def api_key(ctx) -> None:
 @click.option(
     "--name",
     default=None,
-    help="Name stored on the hub for this key (default: the workspace id).",
+    help="Name stored on the hub for this key (default: workspace-hostname).",
 )
 @click.option(
     "--login-timeout",
@@ -163,17 +188,30 @@ def api_key(ctx) -> None:
     show_default=True,
     help="Lifetime in months (1, 3, or 6 months), or never.",
 )
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Replace a stored key: revoke it on the hub, then mint a new one.",
+)
 def generate(
     host: str | None,
     workspace: str,
     name: str | None,
     login_timeout: int,
     expires: str,
+    force: bool,
 ) -> None:
     """Mint a workspace-scoped Hub API key and store it locally."""
     if host:
         os.environ["SKORE_HUB_URI"] = host
     hub_url = _host(host)
+    key_name = name or _default_api_key_name(workspace)
+    if _registry().get(host=hub_url, workspace=workspace) and not force:
+        raise click.ClickException(
+            f"an API key for workspace '{workspace}' is already stored; "
+            "pass --force to replace it."
+        )
     token = login(timeout=login_timeout)
     user_id, memberships = _client.me(hub_url, token.access)
     if not memberships:
@@ -181,16 +219,20 @@ def generate(
             "you are not a member of any hub workspace; create or join one first."
         )
     membership = _membership_for(memberships, workspace)
+    if force:
+        _revoke_stored_api_key(hub_url, token.access, user_id, workspace)
     expires_at = _expires_at_from_choice(expires)
-    secret = _create_workspace_api_key(
+    api_key_id, secret = _create_workspace_api_key(
         hub_url,
         token.access,
         user_id,
         membership,
-        name or workspace,
+        key_name,
         expires_at=expires_at,
     )
-    _registry().set(host=hub_url, workspace=workspace, api_key=secret)
+    _registry().set(
+        host=hub_url, workspace=workspace, api_key=secret, api_key_id=api_key_id
+    )
     if expires_at:
         console.print(
             f"[skore.ok]+[/] generated API key for workspace "
@@ -205,9 +247,27 @@ def generate(
 @api_key.command("delete")
 @click.option("--host", default=None, help="Hub host URL.")
 @click.option("--workspace", required=True, help="Hub workspace whose key to delete.")
-def delete(host: str | None, workspace: str) -> None:
-    """Delete a stored Hub API key for a workspace."""
-    _registry().delete(host=_host(host), workspace=workspace)
+@click.option(
+    "--login-timeout",
+    default=600,
+    show_default=True,
+    help="Seconds to wait for interactive device login.",
+)
+def delete(host: str | None, workspace: str, login_timeout: int) -> None:
+    """Delete a stored Hub API key locally and on the hub."""
+    if host:
+        os.environ["SKORE_HUB_URI"] = host
+    hub_url = _host(host)
+    token = login(timeout=login_timeout)
+    user_id, memberships = _client.me(hub_url, token.access)
+    if not memberships:
+        raise click.ClickException(
+            "you are not a member of any hub workspace; create or join one first."
+        )
+    _membership_for(memberships, workspace)
+    if not _revoke_stored_api_key(hub_url, token.access, user_id, workspace):
+        console.print("No API key stored.")
+        return
 
 
 @api_key.command("list")

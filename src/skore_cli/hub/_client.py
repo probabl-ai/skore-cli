@@ -135,3 +135,17 @@ def list_api_keys(
         )
         for item in response.json()
     ]
+
+
+def delete_api_key(
+    hub_url: str,
+    token: str,
+    user_id: str,
+    api_key_id: int,
+    *,
+    transport: Any = None,
+) -> None:
+    """Delete a Hub API key by id."""
+    with _client(hub_url, token, transport) as client:
+        response = client.delete(f"/identity/users/{user_id}/api-keys/{api_key_id}")
+    _raise_for(response, context="deleting the API key")
