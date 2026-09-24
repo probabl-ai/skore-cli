@@ -48,11 +48,15 @@ def test_agent_names_match_registry():
 def test_harness_names_come_from_registry():
     assert HARNESS_NAMES == [
         "claude",
+        "claude-ui",
+        "claude-plugin",
         "cursor",
+        "cursor-cli",
         "codex",
         "opencode",
         "pi",
         "copilot",
+        "copilot-cli",
         "bob",
         "bob-ide",
     ]
@@ -63,6 +67,18 @@ def test_harness_choices_include_canonical_names_and_aliases():
     assert "bob-ide" in HARNESS_CHOICES
     assert HARNESS_CHOICES.count("bob-ide") == 1
     assert HARNESS_CHOICES.count("bobide") == 1
+    assert "claude" in HARNESS_CHOICES
+    assert "claude-cli" in HARNESS_CHOICES
+    assert "claude-ui" in HARNESS_CHOICES
+    assert "claude-plugin" in HARNESS_CHOICES
+    assert HARNESS_NAMES.count("claude-plugin") == 1
+    assert "claude-plugin-cursor" in HARNESS_CHOICES
+    assert "claude-plugin-code" in HARNESS_CHOICES
+    assert "claude-plugin-code-insiders" in HARNESS_CHOICES
+    assert "claude-plugin-cursor" not in HARNESS_NAMES
+    assert "cursor-cli" in HARNESS_CHOICES
+    assert "copilot-cli" in HARNESS_CHOICES
+    assert "github-copilot-cli" in HARNESS_CHOICES
     assert all(name in HARNESS_CHOICES for name in HARNESS_NAMES)
 
 
@@ -176,7 +192,7 @@ def test_resolve_targets_copilot_project_only(tmp_path):
     local = resolve_targets(["github-copilot"], global_=False, home=home, cwd=project)
 
     assert local == [("github-copilot", project / ".github" / "skills")]
-    with pytest.raises(ValueError, match="GitHub Copilot has no user-level"):
+    with pytest.raises(ValueError, match="Copilot in VSCode has no user-level"):
         resolve_targets(["github-copilot"], global_=True, home=home, cwd=project)
 
 
@@ -231,12 +247,34 @@ def test_is_non_interactive_in_ci(monkeypatch):
 
 
 def test_harness_display_name_uses_label():
-    assert AGENTS["claude-code"].harness_display_name == "Claude"
+    assert AGENTS["claude-code"].harness_display_name == "Claude CLI"
+    assert AGENTS["claude-ui"].harness_display_name == "Claude UI"
+    assert AGENTS["claude-plugin"].harness_display_name == "Claude Plugin"
+    assert AGENTS["cursor"].harness_display_name == "Cursor IDE"
+    assert AGENTS["cursor-cli"].harness_display_name == "Cursor CLI"
+    assert AGENTS["codex"].harness_display_name == "Codex CLI"
+    assert AGENTS["github-copilot"].harness_display_name == "Copilot in VSCode"
+    assert AGENTS["github-copilot-cli"].harness_display_name == "Copilot CLI"
     assert AGENTS["agents"].harness_display_name == "Agents"
+
+
+def test_ide_extension_hosts_uses_home(tmp_path, monkeypatch):
+    monkeypatch.setattr(_agents.Path, "home", lambda: tmp_path)
+    assert _agents.ide_extension_hosts() == (
+        ("cursor", tmp_path / ".cursor" / "extensions", "cursor"),
+        ("code", tmp_path / ".vscode" / "extensions", "vscode"),
+        (
+            "code-insiders",
+            tmp_path / ".vscode-insiders" / "extensions",
+            "vscode-insiders",
+        ),
+    )
 
 
 def test_harness_registry_helpers(monkeypatch, tmp_path):
     monkeypatch.setattr(_agents, "BOB_IDE_APP_PATH", tmp_path / "absent.app")
+    monkeypatch.setattr(_agents, "CLAUDE_UI_APP_PATH", tmp_path / "absent.app")
+    monkeypatch.setattr(_agents, "ide_extension_hosts", lambda: ())
     monkeypatch.setattr(
         _agents.shutil,
         "which",
@@ -246,8 +284,15 @@ def test_harness_registry_helpers(monkeypatch, tmp_path):
     assert get_harness("opencode") is AGENTS["opencode"]
     with pytest.raises(KeyError):
         get_harness("missing")
+    assert get_harness("claude-plugin") is AGENTS["claude-plugin"]
+    assert get_harness("claude-plugin-cursor") is AGENTS["claude-plugin"]
     assert normalize_harness_name(None) is None
     assert normalize_harness_name("claude-code") == "claude"
+    assert normalize_harness_name("claude-cli") == "claude"
+    assert normalize_harness_name("claude-ui") == "claude-ui"
+    assert normalize_harness_name("claude-plugin") == "claude-plugin"
+    assert normalize_harness_name("claude-plugin-cursor") == "claude-plugin-cursor"
+    assert normalize_harness_name("cursor-cli") == "cursor-cli"
     assert normalize_harness_name("bobide") == "bob-ide"
     assert normalize_harness_name("unknown") == "unknown"
     assert is_harness_installed(AGENTS["opencode"])
@@ -264,14 +309,14 @@ def test_resolve_skill_agent_requires_skill_directories():
 
 def test_missing_skills_directory_message_plural():
     assert (
-        _missing_skills_directory_message(["GitHub Copilot", "Other"], global_=True)
-        == "GitHub Copilot, Other have no user-level skills directories."
+        _missing_skills_directory_message(["Copilot in VSCode", "Other"], global_=True)
+        == "Copilot in VSCode, Other have no user-level skills directories."
     )
 
 
 def test_launch_harness_validates_installation(monkeypatch, tmp_path):
     monkeypatch.setattr(_agents, "is_harness_installed", lambda agent: False)
-    with pytest.raises(RuntimeError, match="Claude is not installed"):
+    with pytest.raises(RuntimeError, match="Claude CLI is not installed"):
         launch_harness(AGENTS["claude-code"], tmp_path)
 
 

@@ -35,6 +35,7 @@ def test_cli_without_subcommand_shows_plain_help():
 _AGENT_ENV_VARS = (
     "CLAUDECODE",
     "CURSOR_AGENT",
+    "CURSOR_CLI",
     "GEMINI_CLI",
     "CODEX_SANDBOX",
     "PI_CODING_AGENT",
@@ -86,9 +87,9 @@ def test_cli_help_claude_code_detected(monkeypatch):
     assert result.exit_code == 0
     assert "Detected: Claude Code" in result.output
     assert "Skills target: .claude/skills" in result.output
-    assert "Harness: Claude" in result.output
+    assert "Harness: Claude CLI" in result.output
     assert ".claude/skills" in result.output
-    assert "Configure Claude with the Skore Hub provider" in result.output
+    assert "Configure Claude CLI with the Skore Hub provider" in result.output
 
 
 def test_cli_help_cursor_detected(monkeypatch):
@@ -103,8 +104,8 @@ def test_cli_help_cursor_detected(monkeypatch):
     assert result.exit_code == 0
     assert "Detected: Cursor" in result.output
     assert "Skills target: .cursor/skills" in result.output
-    assert "Harness: Cursor" in result.output
-    assert "Configure Cursor with the Skore Hub provider" in result.output
+    assert "Harness: Cursor IDE" in result.output
+    assert "Configure Cursor IDE with the Skore Hub provider" in result.output
 
 
 def test_cli_help_opencode_detected(monkeypatch):

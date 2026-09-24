@@ -43,7 +43,7 @@ they do not take `--repo`.
 `agents` is the cross-client default (`.agents/skills`). Other names write the
 tool's native `SKILL.md` directory. Most global installs mirror that folder
 under your home directory; Windsurf uses `~/.codeium/windsurf/skills`, Amp uses
-`~/.config/agents/skills`, and GitHub Copilot has no user-level skills
+`~/.config/agents/skills`, and Copilot in VSCode has no user-level skills
 directory (`--global` is rejected). Bob Shell and Bob IDE share `.bob/skills`.
 
 ```bash
@@ -62,9 +62,18 @@ directory (gitignored). The API key is not stored there: it comes from the
 credential registry, and `skore agent` runs `skore hub api-key generate
 --host=<host> --workspace=<workspace>` for you when no key is stored yet.
 
-Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude**,
-**Cursor**, **OpenCode**, **Pi**, **GitHub Copilot** and **Codex** (all must be on
-`PATH`; on macOS, Bob IDE is found via its application bundle). Bob IDE also
+Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude CLI**,
+**Claude UI**, **Claude Plugin** (Cursor, VS Code, or VS Code Insiders),
+**Cursor IDE**, **Cursor CLI**, **OpenCode**,
+**Pi**, **Copilot in VSCode**, **Copilot CLI** and **Codex CLI**
+(detected via `PATH`, the application bundle on macOS for Bob IDE and Claude UI,
+or the Claude Code extension for Claude Plugin). The interactive picker lists
+detected harnesses first, then the ones that are not installed.
+`--harness claude` / `claude-cli` is the CLI; `claude-ui` is the desktop app.
+`--harness claude-plugin` asks which IDE to open; `claude-plugin-cursor`,
+`claude-plugin-code`, and `claude-plugin-code-insiders` select that IDE.
+`--harness cursor` is Cursor IDE;
+`cursor-cli` is the `agent` binary. Bob IDE also
 accepts `--harness bobide` — the name of the command its installer puts on
 `PATH` — as an alias for `--harness bob-ide`. Use `SKORE_HUB_URI` (or
 `--hub-url`) to point at a non-default hub.

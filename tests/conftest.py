@@ -117,6 +117,7 @@ def workspace(monkeypatch, tmp_path):
     for var in (
         "CLAUDECODE",
         "CURSOR_AGENT",
+        "CURSOR_CLI",
         "GEMINI_CLI",
         "CODEX_SANDBOX",
         "PI_CODING_AGENT",
