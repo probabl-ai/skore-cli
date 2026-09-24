@@ -234,6 +234,7 @@ class Token:
 
     @property
     def access(self) -> str:
+        """Return a valid access token, refreshing it if it has expired."""
         with self.__lock:
             if self.__expiration <= datetime.now(UTC):
                 access, refreshment, expiration = post_oauth_refresh_token(

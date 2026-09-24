@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -251,7 +251,7 @@ def test_create_workspace_api_key_requires_permissions():
 
 
 def test_expires_at_from_months_clamps_end_of_month():
-    now = datetime(2026, 1, 31, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 31, 12, 0, 0, tzinfo=UTC)
     assert _hub._expires_at_from_months(1, now=now) == "2026-02-28T12:00:00Z"
     assert _hub._expires_at_from_months(3, now=now) == "2026-04-30T12:00:00Z"
 
@@ -357,7 +357,7 @@ def test_hub_api_key_generate_name_override(monkeypatch):
 
 
 def test_hub_api_key_generate_expires_in_three_months(monkeypatch):
-    now = datetime(2026, 1, 15, 8, 30, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 15, 8, 30, 0, tzinfo=UTC)
 
     class _FrozenDateTime(datetime):
         @classmethod

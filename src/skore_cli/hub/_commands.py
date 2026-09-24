@@ -6,7 +6,7 @@ import calendar
 import os
 import re
 import socket
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import rich_click as click
 from rich.table import Table
@@ -106,11 +106,8 @@ def _add_calendar_months(when: datetime, months: int) -> datetime:
 
 def _expires_at_from_months(months: int, *, now: datetime | None = None) -> str:
     """Return an ISO-8601 UTC instant ``months`` calendar months after ``now``."""
-    when = now or datetime.now(timezone.utc)
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    else:
-        when = when.astimezone(timezone.utc)
+    when = now or datetime.now(UTC)
+    when = when.replace(tzinfo=UTC) if when.tzinfo is None else when.astimezone(UTC)
     expiry = _add_calendar_months(when, months)
     return expiry.isoformat(timespec="seconds").replace("+00:00", "Z")
 
