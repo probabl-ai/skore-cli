@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 import rich_click as click
 from click.testing import CliRunner
-from skore._plugins.hub.authentication import URI, registry
+from skore._plugins.hub.authentication import registry
 
 from skore_cli import cli
 from skore_cli.hub import _client
@@ -41,41 +41,8 @@ def test_hub_api_key_no_subcommand_shows_help():
 
     assert result.exit_code == 0
     assert "generate" in result.output
-    assert "add" in result.output
     assert "delete" in result.output
     assert "list" in result.output
-
-
-def test_hub_api_key_add_requires_workspace():
-    result = _invoke(["hub", "api-key", "add", "secret"])
-
-    assert result.exit_code != 0
-    assert "workspace" in result.output.lower()
-
-
-def test_hub_api_key_add_stores_key():
-    result = _invoke(
-        [
-            "hub",
-            "api-key",
-            "add",
-            "secret",
-            "--host=http://hub.test",
-            "--workspace=team",
-        ]
-    )
-
-    assert result.exit_code == 0
-    assert registry.get(host="http://hub.test", workspace="team") == "secret"
-
-
-def test_hub_api_key_add_without_host_uses_default_uri(monkeypatch):
-    monkeypatch.delenv("SKORE_HUB_URI", raising=False)
-
-    result = _invoke(["hub", "api-key", "add", "secret", "--workspace=team"])
-
-    assert result.exit_code == 0
-    assert registry.get(host=URI(), workspace="team") == "secret"
 
 
 def test_hub_api_key_delete_requires_workspace():

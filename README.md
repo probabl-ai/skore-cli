@@ -93,13 +93,11 @@ skore agent --workspace ./myapp # configure another project directory
 Store and inspect Hub API keys locally via skore's credential registry
 (`~/.skore.hub/credentials.json`). `--host` selects a non-default hub (omit it
 to use `SKORE_HUB_URI` or the public hub); `--workspace` is required when
-generating, adding or deleting a key.
+generating or deleting a key.
 
 ```bash
 skore hub api-key generate --workspace=<workspace>
 skore hub api-key generate --host=<host> --workspace=<workspace>
-skore hub api-key add <key> --workspace=<workspace>
-skore hub api-key add <key> --host=<host> --workspace=<workspace>
 skore hub api-key delete --workspace=<workspace>
 skore hub api-key delete --host=<host> --workspace=<workspace>
 skore hub api-key list

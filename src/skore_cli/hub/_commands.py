@@ -17,7 +17,7 @@ click.rich_click.COMMAND_GROUPS = {
         {"name": "Credentials", "commands": ["api-key"]},
     ],
     "cli hub api-key": [
-        {"name": "Manage", "commands": ["generate", "add", "delete", "list"]},
+        {"name": "Manage", "commands": ["generate", "delete", "list"]},
     ],
 }
 
@@ -108,7 +108,7 @@ def _membership_for(
 @hub.group("api-key", invoke_without_command=True)
 @click.pass_context
 def api_key(ctx) -> None:
-    """Generate, add, delete and list Hub API keys."""
+    """Generate, delete and list Hub API keys."""
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
@@ -148,15 +148,6 @@ def generate(
     console.print(
         f"[skore.ok]+[/] generated API key for workspace [skore.skill]{workspace}[/]"
     )
-
-
-@api_key.command("add")
-@click.argument("key")
-@click.option("--host", default=None, help="Hub host URL.")
-@click.option("--workspace", required=True, help="Hub workspace to attach the key to.")
-def add(key: str, host: str | None, workspace: str) -> None:
-    """Store a Hub API key for a workspace."""
-    _registry().set(host=_host(host), workspace=workspace, api_key=key)
 
 
 @api_key.command("delete")
