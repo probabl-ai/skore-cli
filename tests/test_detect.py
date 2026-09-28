@@ -11,6 +11,7 @@ def _clear_agent_envs(monkeypatch):
     for var in (
         "CLAUDECODE",
         "CURSOR_AGENT",
+        "CURSOR_CLI",
         "GEMINI_CLI",
         "CODEX_SANDBOX",
         "PI_CODING_AGENT",
@@ -36,6 +37,20 @@ def test_cursor_detected(monkeypatch):
     monkeypatch.setenv("CURSOR_AGENT", "1")
     result = detect_agent()
     assert result is AGENTS["cursor"]
+
+
+def test_cursor_cli_detected(monkeypatch):
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("CURSOR_CLI", "1")
+    result = detect_agent()
+    assert result is AGENTS["cursor-cli"]
+
+
+def test_priority_cursor_ide_before_cursor_cli(monkeypatch):
+    _clear_agent_envs(monkeypatch)
+    monkeypatch.setenv("CURSOR_AGENT", "1")
+    monkeypatch.setenv("CURSOR_CLI", "1")
+    assert detect_agent().name == "cursor"
 
 
 def test_gemini_detected(monkeypatch):
@@ -117,6 +132,7 @@ def test_priority_pi_before_opencode(monkeypatch):
     [
         ("CLAUDECODE", "1", "claude"),
         ("CURSOR_AGENT", "1", "cursor"),
+        ("CURSOR_CLI", "1", "cursor-cli"),
         ("GEMINI_CLI", "1", None),
         ("CODEX_SANDBOX", "seatbelt", "codex"),
         ("PI_CODING_AGENT", "true", "pi"),

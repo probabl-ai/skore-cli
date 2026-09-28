@@ -38,6 +38,7 @@ def test_cli_without_subcommand_shows_plain_help():
 _AGENT_ENV_VARS = (
     "CLAUDECODE",
     "CURSOR_AGENT",
+    "CURSOR_CLI",
     "GEMINI_CLI",
     "CODEX_SANDBOX",
     "PI_CODING_AGENT",
@@ -89,9 +90,9 @@ def test_cli_help_claude_code_detected(monkeypatch):
     assert result.exit_code == 0
     assert "Detected: Claude Code" in result.output
     assert "Skills target: .claude/skills" in result.output
-    assert "Harness: Claude" in result.output
+    assert "Harness: Claude CLI" in result.output
     assert ".claude/skills" in result.output
-    assert "Configure Claude with the Skore Hub provider" in result.output
+    assert "Configure Claude CLI with the Skore Hub provider" in result.output
 
 
 def test_cli_help_cursor_detected(monkeypatch):
@@ -106,8 +107,8 @@ def test_cli_help_cursor_detected(monkeypatch):
     assert result.exit_code == 0
     assert "Detected: Cursor" in result.output
     assert "Skills target: .cursor/skills" in result.output
-    assert "Harness: Cursor" in result.output
-    assert "Configure Cursor with the Skore Hub provider" in result.output
+    assert "Harness: Cursor IDE" in result.output
+    assert "Configure Cursor IDE with the Skore Hub provider" in result.output
 
 
 def test_cli_help_opencode_detected(monkeypatch):
@@ -190,15 +191,131 @@ def test_auth_missing_skore_raises_click_exception(monkeypatch):
     assert "skore" in str(excinfo.value)
 
 
+def test_resolve_hub_uri_without_url_keeps_env_unchanged(monkeypatch):
+    module = SimpleNamespace(URI=lambda: "https://resolved.test")
+
+    monkeypatch.delenv(_skore.URI_ENV, raising=False)
+
+    assert _skore.resolve_hub_uri(None, lambda _: module) == "https://resolved.test"
+    assert _skore.URI_ENV not in os.environ
+
+
 def test_resolve_hub_uri_sets_explicit_url(monkeypatch):
     module = SimpleNamespace(URI=lambda: "https://resolved.test")
 
     monkeypatch.delenv(_skore.URI_ENV, raising=False)
+    monkeypatch.setattr(_skore, "_discover_api_url", lambda url: None)
 
     assert _skore.resolve_hub_uri("https://hub.test", lambda _: module) == (
         "https://resolved.test"
     )
     assert os.environ[_skore.URI_ENV] == "https://hub.test"
+
+
+def test_resolve_hub_uri_discovers_api_url_from_frontend(monkeypatch):
+    module = SimpleNamespace(URI=lambda: "https://resolved.test")
+
+    monkeypatch.delenv(_skore.URI_ENV, raising=False)
+    monkeypatch.setattr(
+        _skore, "_discover_api_url", lambda url: "https://api.discovered.test"
+    )
+
+    assert _skore.resolve_hub_uri("https://frontend.test", lambda _: module) == (
+        "https://resolved.test"
+    )
+    assert os.environ[_skore.URI_ENV] == "https://api.discovered.test"
+
+
+def test_discover_api_url_returns_api_url_on_success(monkeypatch):
+    import json
+
+    class FakeResponse:
+        status = 200
+
+        def read(self):
+            return json.dumps({"api_url": "https://api.hub.test"}).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    urls = []
+
+    def fake_urlopen(url, *, timeout):
+        urls.append(url)
+        return FakeResponse()
+
+    monkeypatch.setattr(_skore.urllib.request, "urlopen", fake_urlopen)
+
+    assert _skore._discover_api_url("https://frontend.test") == "https://api.hub.test"
+    assert urls == ["https://frontend.test/.well-known/skore-hub.json"]
+
+
+def test_discover_api_url_returns_none_on_404(monkeypatch):
+    import io
+    from urllib.error import HTTPError
+
+    def fake_urlopen(url, *, timeout):
+        raise HTTPError(url, 404, "Not Found", {}, io.BytesIO())
+
+    monkeypatch.setattr(_skore.urllib.request, "urlopen", fake_urlopen)
+
+    assert _skore._discover_api_url("https://frontend.test") is None
+
+
+def test_discover_api_url_returns_none_on_non_200(monkeypatch):
+    class FakeResponse:
+        status = 404
+
+        def read(self):
+            return b""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(
+        _skore.urllib.request, "urlopen", lambda url, *, timeout: FakeResponse()
+    )
+
+    assert _skore._discover_api_url("https://frontend.test") is None
+
+
+def test_discover_api_url_returns_none_on_network_error(monkeypatch):
+    from urllib.error import URLError
+
+    def fake_urlopen(url, *, timeout):
+        raise URLError("no route")
+
+    monkeypatch.setattr(_skore.urllib.request, "urlopen", fake_urlopen)
+
+    assert _skore._discover_api_url("https://frontend.test") is None
+
+
+def test_discover_api_url_returns_none_when_json_missing_api_url(monkeypatch):
+    import json
+
+    class FakeResponse:
+        status = 200
+
+        def read(self):
+            return json.dumps({"other": "data"}).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(
+        _skore.urllib.request, "urlopen", lambda url, *, timeout: FakeResponse()
+    )
+
+    assert _skore._discover_api_url("https://frontend.test") is None
 
 
 # --------------------------------------------------------------------------- #
