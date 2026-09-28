@@ -168,8 +168,9 @@ def _resolve_membership(
     "--hub-url",
     default=None,
     help=(
-        "Base URL of the hub (e.g. http://127.0.0.1:8000). Defaults to the "
-        f"{URI_ENV} env var or the public hub."
+        "Hub URL (API or frontend, e.g. https://skore.probabl.ai). "
+        "Frontend URLs are auto-resolved via /.well-known/skore-hub.json. "
+        f"Defaults to the {URI_ENV} env var or the public hub."
     ),
 )
 @click.option(

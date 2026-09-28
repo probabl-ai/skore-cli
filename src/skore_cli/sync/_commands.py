@@ -81,8 +81,9 @@ def _render_result(result, *, dry_run: bool) -> None:
     "--hub-url",
     default=None,
     help=(
-        "Base URL of the Hub API. Defaults to the "
-        f"{URI_ENV} environment variable or the public Hub."
+        "Hub URL (API or frontend, e.g. https://skore.probabl.ai). "
+        "Frontend URLs are auto-resolved via /.well-known/skore-hub.json. "
+        f"Defaults to the {URI_ENV} environment variable or the public Hub."
     ),
 )
 @click.option(
