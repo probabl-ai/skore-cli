@@ -72,8 +72,6 @@ CODEX_PROVIDER_KEY = "skore"
 CODEX_PROVIDER_NAME = "Skore Agent"
 CODEX_PROJECT_CONFIG = ".codex/skore-provider.toml"
 CODEX_API_KEY_ENV = "SKORE_AGENT_API_KEY"
-SDK_API_KEY_ENV = "SKORE_HUB_API_KEY"
-SDK_URI_ENV = "SKORE_HUB_URI"
 
 
 @dataclass(frozen=True)
@@ -782,8 +780,8 @@ def _configure_copilot_cli(_ctx: HarnessContext) -> dict[str, Any]:
     from skore_cli._style import console
 
     console.print(
-        "[skore.muted]Copilot CLI uses the Hub key from[/] [skore.path].skore[/] "
-        "[skore.muted]at launch; no extra project file is written.[/]"
+        "[skore.muted]Copilot CLI uses the Hub key from the credential "
+        "registry at launch; no extra project file is written.[/]"
     )
     return {}
 
@@ -791,14 +789,19 @@ def _configure_copilot_cli(_ctx: HarnessContext) -> dict[str, Any]:
 def _launch_copilot_cli(workspace: Path, model_id: str) -> None:
     """Start ``copilot`` with the same provider env as ``skore-copilot cli``."""
     from skore_cli.agent._skore_file import SkoreConfig
+    from skore_cli.hub._commands import _registry
 
     config = SkoreConfig.load(workspace)
-    if config is None or not config.api_key or not config.hub_url:
+    if config is None or not config.hub_url:
         raise RuntimeError(
             "missing .skore; run skore agent --harness copilot-cli first."
         )
+    api_key = _registry().get(host=config.hub_url, workspace=config.workspace)
+    if not api_key:
+        raise RuntimeError(
+            "missing Hub API key; run skore agent --harness copilot-cli first."
+        )
     hub_url = config.hub_url
-    api_key = config.api_key
     env = os.environ.copy()
     env["COPILOT_PROVIDER_TYPE"] = "openai"
     env["COPILOT_PROVIDER_BASE_URL"] = f"{hub_url.rstrip('/')}/v1"
@@ -844,24 +847,6 @@ def _launch_codex(workspace: Path, model_id: str) -> None:
     for override in _codex_config_overrides(base_url):
         argv.extend(["--config", override])
     _exec_harness("codex", argv, env=env)
-
-
-def _export_sdk_credentials(workspace: Path) -> None:
-    """Publish the ``.skore`` credentials the ``skore`` package reads.
-
-    The harness config only authenticates the harness itself. ``skore.login()``
-    looks the API key up in ``SKORE_HUB_API_KEY`` and otherwise falls back to an
-    interactive browser flow, so every experiment process the agent spawns would
-    open its own OAuth tab. Values already present in the environment win, so a
-    user's own key or hub keeps precedence.
-    """
-    from skore_cli.agent._skore_file import SkoreConfig
-
-    config = SkoreConfig.load(workspace)
-    if config is None:
-        return
-    os.environ.setdefault(SDK_API_KEY_ENV, config.api_key)
-    os.environ.setdefault(SDK_URI_ENV, config.hub_url)
 
 
 def _exec_harness(
@@ -1209,5 +1194,8 @@ def launch_harness(
     console.print(
         f"[skore.ok]Launching[/] [skore.skill]{agent.harness_display_name}[/] ..."
     )
-    _export_sdk_credentials(workspace)
+    from skore_cli.agent._skore_file import SkoreConfig
+
+    if "SKORE_HUB_URI" not in os.environ:
+        SkoreConfig.load(workspace)
     agent.launch(workspace, model_id)

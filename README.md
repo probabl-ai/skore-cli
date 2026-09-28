@@ -8,12 +8,13 @@
 
 Command-line interface for [skore](https://github.com/probabl-ai/skore).
 
-`skore-cli` installs a single `skore` command with three areas:
+`skore-cli` installs a single `skore` command with four areas:
 
 - **skills** — discover, install and manage [Agent Skills](https://agentskills.io)
   from the [probabl-ai/skills](https://github.com/probabl-ai/skills) catalog
 - **agent** — connect a project to the Skore Hub agent, write harness config
   and launch a local coding agent
+- **hub** — generate, store and inspect Skore Hub API keys
 - **sync** — synchronize report projects across local storage, Skore Hub, and MLflow
 
 ## Installation
@@ -56,8 +57,12 @@ skore skills remove        # remove installed skills
 ### Agent
 
 On the first run, `skore agent` logs in when needed, lets you pick a workspace
-and harness, creates a workspace API key, writes the harness configuration and
-launches the agent. Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude CLI**,
+and harness, and saves the workspace and hub URI to `.skore` in the project
+directory (gitignored). The API key is not stored there: it comes from the
+credential registry, and `skore agent` runs `skore hub api-key generate
+--host=<host> --workspace=<workspace>` for you when no key is stored yet.
+
+Supported harnesses: **Bob Shell**, **Bob IDE**, **Claude CLI**,
 **Claude UI**, **Claude Plugin** (Cursor, VS Code, or VS Code Insiders),
 **Cursor IDE**, **Cursor CLI**, **OpenCode**,
 **Pi**, **Copilot in VSCode**, **Copilot CLI** and **Codex CLI**
@@ -70,19 +75,37 @@ detected harnesses first, then the ones that are not installed.
 `--harness cursor` is Cursor IDE;
 `cursor-cli` is the `agent` binary. Bob IDE also
 accepts `--harness bobide` — the name of the command its installer puts on
-`PATH` — as an alias for `--harness bob-ide`. Later runs reuse
-`.skore` in the project directory (gitignored). Use `SKORE_HUB_URI` (or
+`PATH` — as an alias for `--harness bob-ide`. Use `SKORE_HUB_URI` (or
 `--hub-url`) to point at a non-default hub.
 
-Launching a harness exports the `.skore` credentials as `SKORE_HUB_API_KEY` and
-`SKORE_HUB_URI`, so `skore.login()` in the scripts the agent runs authenticates
-with that key instead of opening a browser. Values already set in your
-environment are left untouched.
+Reading `.skore` sets `SKORE_HUB_URI` so the `skore` package talks to the same
+hub. The workspace API key stays in the credential registry and is picked up
+automatically. `--hub-url` / `--host` override the URI for that process.
 
 ```bash
 skore agent
 skore agent --harness claude    # non-interactive harness choice
 skore agent --workspace ./myapp # configure another project directory
+```
+
+### Hub
+
+Store and inspect Hub API keys locally via skore's credential registry
+(`~/.skore.hub/credentials.json`). `--host` selects a non-default hub (omit it
+to use `SKORE_HUB_URI` or the public hub); `--workspace` is required when
+generating or deleting a key. `generate` stores one key per machine for a host
+and workspace; pass `--force` to revoke **this** machine's Hub key and mint a
+replacement. `delete` removes the local entry and revokes only that stored Hub
+key.
+
+```bash
+skore hub api-key generate --workspace=<workspace>
+skore hub api-key generate --workspace=<workspace> --expires 3
+skore hub api-key generate --workspace=<workspace> --force
+skore hub api-key generate --host=<host> --workspace=<workspace>
+skore hub api-key delete --workspace=<workspace>
+skore hub api-key delete --host=<host> --workspace=<workspace>
+skore hub api-key list
 ```
 
 ### Sync
@@ -102,8 +125,9 @@ SKORE_HUB_API_KEY=... skore sync production \
 skore sync experiment --to=mlflow --tracking-uri=http://localhost:5000
 ```
 
-Hub synchronization requires `SKORE_HUB_API_KEY`. Use `--hub-url` to target a custom
-Hub API. Install `skore[mlflow]` to synchronize with MLflow.
+Hub synchronization uses `SKORE_HUB_API_KEY` when set, otherwise the key stored by
+`skore hub api-key`. Use `--hub-url` to target a custom Hub API. Install
+`skore[mlflow]` to synchronize with MLflow.
 
 ## Agent detection
 

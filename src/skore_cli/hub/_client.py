@@ -1,10 +1,9 @@
-"""Thin HTTP client for the hub API used by the ``skore agent`` command.
+"""Thin HTTP client for the hub identity API.
 
-Pure, testable functions over the hub's ``/identity`` endpoints, limited to what
-``skore agent`` needs: reading the user's profile and minting a workspace-scoped
-API key. ``httpx`` is imported lazily inside the calls so building the CLI stays
-cheap. All calls authenticate with the stored interactive login token as a
-bearer.
+Pure, testable functions over the hub's ``/identity`` endpoints: reading the
+user's profile and minting a workspace-scoped API key. ``httpx`` is imported
+lazily inside the calls so building the CLI stays cheap. All calls authenticate
+with the stored interactive login token as a bearer.
 """
 
 from __future__ import annotations
@@ -136,3 +135,17 @@ def list_api_keys(
         )
         for item in response.json()
     ]
+
+
+def delete_api_key(
+    hub_url: str,
+    token: str,
+    user_id: str,
+    api_key_id: int,
+    *,
+    transport: Any = None,
+) -> None:
+    """Delete a Hub API key by id."""
+    with _client(hub_url, token, transport) as client:
+        response = client.delete(f"/identity/users/{user_id}/api-keys/{api_key_id}")
+    _raise_for(response, context="deleting the API key")
