@@ -141,7 +141,7 @@ def _resolve_membership(
             return memberships[0]
         if is_non_interactive():
             raise click.UsageError(
-                "pass a saved workspace in .skore or run interactively to pick one."
+                "multiple workspaces available; run interactively to pick one."
             )
         return _pick_workspace(memberships)
 
@@ -205,7 +205,9 @@ def agent(
     On the first run, ``skore agent`` logs in to the hub (when needed), lets
     you pick a workspace and harness, creates a workspace API key, writes the
     harness config, and launches the agent. Later runs reuse ``.skore`` in the
-    project directory.
+    project directory; passing ``--hub-url`` or ``--harness`` updates the
+    recorded values (a different ``--hub-url`` re-authenticates and mints a
+    fresh API key against that hub) instead of reusing the saved ones.
 
     Supported harnesses: Bob Shell, Bob IDE, Claude CLI, Claude UI, Claude
     Plugin (Cursor, VS Code, or VS Code Insiders), Cursor IDE, Cursor CLI,
@@ -224,10 +226,11 @@ def agent(
 
     config = SkoreConfig.load(workspace)
 
-    if config is not None and config.api_key and config.workspace:
-        resolved_hub_url = (
-            resolve_hub_uri(hub_url, _auth) if hub_url is not None else config.hub_url
-        )
+    # The saved hub_url is stored already resolved, so a raw match modulo a
+    # trailing slash means the same hub and reuses the saved credentials.
+    if config is not None and (
+        hub_url is None or hub_url.rstrip("/") == config.hub_url.rstrip("/")
+    ):
         harness_name = harness_name or config.harness
     else:
         resolved_hub_url = resolve_hub_uri(hub_url, _auth)
@@ -238,39 +241,41 @@ def agent(
                 "you are not a member of any hub workspace; create or join one first."
             )
 
-        saved_workspace = config.workspace if config else None
-        membership = _resolve_membership(memberships, saved_workspace)
+        # First run or hub switch: memberships were fetched just now, so a
+        # saved workspace id never applies.
+        membership = _resolve_membership(memberships, None)
 
-        if config is None or not config.api_key:
-            if harness_name is None:
-                if is_non_interactive():
-                    detected = detect_agent()
-                    if (
-                        detected
-                        and detected.harness_name
-                        and is_harness_installed(detected)
-                    ):
-                        harness_name = detected.harness_name
-                    else:
-                        raise click.UsageError(
-                            "pass --harness to create an API key non-interactively."
-                        )
+        if harness_name is None:
+            if is_non_interactive():
+                detected = detect_agent()
+                if (
+                    detected
+                    and detected.harness_name
+                    and is_harness_installed(detected)
+                ):
+                    harness_name = detected.harness_name
+                elif config is not None and config.harness:
+                    # The harness is hub-independent: fall back to the saved
+                    # one before erroring out on a hub switch.
+                    harness_name = config.harness
                 else:
-                    harness_name = _pick_harness(workspace)
-            if harness_name == "claude-plugin" or claude_plugin_ide_ready(harness_name):
-                harness_name = resolve_claude_plugin_harness(harness_name)
-            api_key = _create_workspace_api_key(
-                resolved_hub_url, token, user_id, membership, harness_name
-            )
-        else:
-            api_key = config.api_key
+                    raise click.UsageError(
+                        "pass --harness to create an API key non-interactively."
+                    )
+            else:
+                harness_name = _pick_harness(workspace)
+        if harness_name == "claude-plugin" or claude_plugin_ide_ready(harness_name):
+            harness_name = resolve_claude_plugin_harness(harness_name)
+        api_key = _create_workspace_api_key(
+            resolved_hub_url, token, user_id, membership, harness_name
+        )
 
         config = SkoreConfig(
             hub_url=resolved_hub_url,
             workspace=membership.public_id,
             workspace_id=membership.workspace_id,
             api_key=api_key,
-            harness=harness_name or (config.harness if config else None),
+            harness=harness_name,
         )
         config_path = config.save(workspace)
         ensure_gitignore_entry(workspace)

@@ -71,8 +71,10 @@ detected harnesses first, then the ones that are not installed.
 `cursor-cli` is the `agent` binary. Bob IDE also
 accepts `--harness bobide` — the name of the command its installer puts on
 `PATH` — as an alias for `--harness bob-ide`. Later runs reuse
-`.skore` in the project directory (gitignored). Use `SKORE_HUB_URI` (or
-`--hub-url`) to point at a non-default hub.
+`.skore` in the project directory (gitignored); passing `--hub-url` or
+`--harness` re-writes `.skore` with the new values (a different `--hub-url` also
+mints a fresh API key against that hub). Use `SKORE_HUB_URI` (or `--hub-url`)
+to point at a non-default hub.
 
 Launching a harness exports the `.skore` credentials as `SKORE_HUB_API_KEY` and
 `SKORE_HUB_URI`, so `skore.login()` in the scripts the agent runs authenticates
