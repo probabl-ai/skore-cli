@@ -51,7 +51,15 @@ skore skills install       # install skills (interactive or by id)
 skore skills install --repo acme/skills gamma
 skore skills update        # update from each skill's recorded source
 skore skills remove        # remove installed skills
+skore skills run status    # project methodology CLI (forwards to python -m skore_skills)
 ```
+
+`install` / `list` / `update` / `remove` manage the markdown catalog
+(Discover / Manage in `skore skills --help`).
+`skore skills run …` is Runtime: it forwards to `python -m skore_skills`
+in the **project** interpreter (pixi when `pixi.toml` is present). It is not a
+catalog skill id. Until `skore-skills` is installed in that env, use
+`python -m skore_skills` directly.
 
 ### Agent
 
