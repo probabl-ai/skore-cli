@@ -2038,7 +2038,7 @@ hub = [
 
 [[package]]
 name = "skore-cli"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -2046,6 +2046,7 @@ dependencies = [
     { name = "rich" },
     { name = "rich-click" },
     { name = "skore", extra = ["hub"] },
+    { name = "skore-skills" },
     { name = "textual" },
 ]
 
@@ -2075,10 +2076,19 @@ requires-dist = [
     { name = "rich", specifier = ">=14.2" },
     { name = "rich-click", specifier = ">=1.9" },
     { name = "skore", extras = ["hub"], specifier = ">=0.24.0" },
+    { name = "skore-skills", git = "https://github.com/probabl-ai/skills.git?rev=main" },
     { name = "textual" },
     { name = "xdoctest", marker = "extra == 'test'" },
 ]
 provides-extras = ["test"]
+
+[[package]]
+name = "skore-skills"
+version = "0.7.0"
+source = { git = "https://github.com/probabl-ai/skills.git?rev=main#0b321e9541e52ff2c29a0bb41dd312682a599190" }
+dependencies = [
+    { name = "click" },
+]
 
 [[package]]
 name = "skrub"

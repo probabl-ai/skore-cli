@@ -8,7 +8,11 @@
 
 Command-line interface for [skore](https://github.com/probabl-ai/skore).
 
-`skore-cli` installs a single `skore` command with three areas:
+`skore-cli` installs the `skore` command with three areas. The same install
+also provides `skore-skills`, the helper CLI from the `main` branch of
+[probabl-ai/skills](https://github.com/probabl-ai/skills).
+
+The `skore` command covers:
 
 - **skills** — discover, install and manage [Agent Skills](https://agentskills.io)
   from the [probabl-ai/skills](https://github.com/probabl-ai/skills) catalog
