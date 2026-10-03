@@ -118,7 +118,7 @@ def test_install_skill_project(release, workspace):
     sidecar = json.loads((skill_dir / SIDECAR).read_text())
     assert sidecar == {
         "id": "alpha",
-        "release": "0.1.0",
+        "release": "main",
         "hash": "hash-alpha-1",
         "repository": "probabl-ai/skills",
     }
@@ -126,7 +126,7 @@ def test_install_skill_project(release, workspace):
         (workspace.project / ".agents" / "skills" / ".catalog.json").read_text()
     )
     assert "probabl-ai/skills" in local_catalog["sources"]
-    assert local_catalog["sources"]["probabl-ai/skills"]["release"] == "0.1.0"
+    assert local_catalog["sources"]["probabl-ai/skills"]["release"] == "main"
 
 
 def test_install_workflow_expands_to_skills(release, workspace):
@@ -591,7 +591,7 @@ async def test_wizard_app_loads_custom_repo(release):
     assert agents == ["cursor"]
     assert global_ is False
     assert repo == "acme/skills"
-    assert app.tag == "9.0.0"
+    assert app.tag == "main"
 
 
 def test_list_installed(release, workspace):
@@ -768,7 +768,7 @@ def test_fetch_failure_reports_clean_error(workspace, monkeypatch):
     result = _invoke(["skills", "install", "nonexistent"])
 
     assert result.exit_code != 0
-    assert "Could not fetch the latest skills release" in _plain_output(result.output)
+    assert "Could not fetch the main branch" in _plain_output(result.output)
 
 
 def test_skills_no_subcommand_shows_help(release, workspace):
@@ -972,7 +972,7 @@ def test_install_custom_repo(release, workspace):
     sidecar = json.loads((skill_dir / SIDECAR).read_text())
     assert sidecar == {
         "id": "gamma",
-        "release": "9.0.0",
+        "release": "main",
         "hash": "hash-gamma-1",
         "repository": "acme/skills",
     }

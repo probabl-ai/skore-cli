@@ -264,13 +264,12 @@ class ProbablSkillsInstaller(App[None]):
         if self._repo == repo and self._catalog is not None:
             return True
 
-        self.notify(f"Fetching latest skills release from {repo}...")
+        self.notify(f"Fetching skills from the main branch of {repo}...")
         try:
             tag, root, catalog = fetch_release(repo)
         except (OSError, ValueError, KeyError) as error:
             self.notify(
-                f"Could not fetch the latest skills release from GitHub "
-                f"({repo}): {error}",
+                f"Could not fetch the main branch from GitHub ({repo}): {error}",
                 severity="error",
             )
             return False
