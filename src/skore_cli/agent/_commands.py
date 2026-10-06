@@ -26,7 +26,7 @@ from skore_cli._agents import (
 from skore_cli._hub_auth import ensure_login
 from skore_cli._skore import URI_ENV, resolve_hub_uri
 from skore_cli._skore import auth as _auth
-from skore_cli._style import console
+from skore_cli._style import action_required, console
 from skore_cli.agent import _client
 from skore_cli.agent._skore_file import SkoreConfig, ensure_gitignore_entry
 
@@ -323,11 +323,10 @@ def agent(
     )
     detected = detect_agent()
     if detected and detected.harness_name == harness_name:
-        console.print(
-            f"[skore.ok]+[/] {harness.harness_display_name} configured with the "
-            f"Skore Hub provider. Restart {harness.harness_display_name} or start "
-            f"a new session to "
-            f"use it."
+        action_required(
+            f"{harness.harness_display_name} is configured with the Skore Hub "
+            f"provider. Restart {harness.harness_display_name} or start a new "
+            f"session to use it."
         )
         return
     if not is_harness_installed(harness):
