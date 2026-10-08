@@ -10,6 +10,10 @@ from types import SimpleNamespace
 import pytest
 import rich_click as click
 from click.testing import CliRunner
+from skore._plugins.hub.authentication import key as hub_key
+from skore._plugins.hub.authentication import login as hub_login
+from skore._plugins.hub.authentication.registry import distant
+from skore._plugins.hub.authentication.registry.distant import Workspace
 
 from skore_cli import _agents
 from skore_cli._agents import AGENTS, DEFAULT_MODEL_ID, HARNESS_NAMES, HarnessContext
@@ -21,8 +25,6 @@ from skore_cli.agent._skore_file import (
     SkoreConfig,
     ensure_gitignore_entry,
 )
-from skore_cli.hub import _client
-from skore_cli.hub._commands import PROJECT_PERMISSIONS
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -42,21 +44,29 @@ def _mock_harness_on_path(monkeypatch, name: str) -> None:
 
 
 def _membership(public_id: str = "ws-1", workspace_id: int = 1):
-    return _client.Membership(
-        workspace_id=workspace_id,
-        public_id=public_id,
-        permissions=frozenset(PROJECT_PERMISSIONS),
+    return Workspace(id=workspace_id, public_id=public_id, permissions=frozenset())
+
+
+def _stub_login(monkeypatch):
+    monkeypatch.setattr(
+        hub_login,
+        "login",
+        lambda *, host, timeout: SimpleNamespace(access="tok"),
+    )
+
+
+def _stub_identity(monkeypatch, workspaces):
+    monkeypatch.setattr(
+        distant,
+        "identity",
+        lambda *, host, token: SimpleNamespace(workspaces=workspaces),
     )
 
 
 @pytest.fixture(autouse=True)
 def stub_registry(monkeypatch):
     """Serve a stored API key so runs never reach the real credential registry."""
-    monkeypatch.setattr(
-        _commands,
-        "_registry",
-        lambda: SimpleNamespace(get=lambda **kwargs: "new-secret"),
-    )
+    monkeypatch.setattr(hub_key, "get", lambda **kwargs: "new-secret")
 
 
 @pytest.fixture(autouse=True)
@@ -230,11 +240,7 @@ def test_agent_hub_url_overrides_saved_config(tmp_path, monkeypatch):
         lookups.append((host, workspace))
         return "new-secret"
 
-    monkeypatch.setattr(
-        _commands,
-        "_registry",
-        lambda: SimpleNamespace(get=get),
-    )
+    monkeypatch.setattr(hub_key, "get", get)
     uris = []
     monkeypatch.setattr(
         _commands,
@@ -265,14 +271,8 @@ def test_agent_hub_url_overrides_saved_config(tmp_path, monkeypatch):
 
 def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -307,14 +307,8 @@ def test_agent_saves_claude_plugin_ide(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(_agents, "is_non_interactive", lambda: False)
     monkeypatch.setattr(_agents, "_prompt_ide", lambda options: "cursor")
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -348,14 +342,8 @@ def test_agent_claude_plugin_ide_flag_skips_the_menu(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _agents, "_prompt_ide", lambda options: prompted.append(options)
     )
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -441,14 +429,8 @@ def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(
     and stored under the canonical ``bob-ide`` name."""
     monkeypatch.setattr(_agents.sys, "platform", "linux")
     _mock_harness_on_path(monkeypatch, "bobide")
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -469,14 +451,8 @@ def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(
 
 def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
 
     result = CliRunner().invoke(agent, ["--workspace", str(tmp_path)])
@@ -487,12 +463,8 @@ def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
 
 def test_agent_generates_api_key_when_none_is_stored(tmp_path, monkeypatch):
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -507,11 +479,9 @@ def test_agent_generates_api_key_when_none_is_stored(tmp_path, monkeypatch):
         stored[(host, workspace)] = "minted-secret"
 
     monkeypatch.setattr(
-        _commands,
-        "_registry",
-        lambda: SimpleNamespace(
-            get=lambda *, host, workspace: stored.get((host, workspace))
-        ),
+        hub_key,
+        "get",
+        lambda *, host, workspace: stored.get((host, workspace)),
     )
     monkeypatch.setattr(_commands, "generate", fake_generate)
 
@@ -694,10 +664,8 @@ def test_resolve_membership_multiple_interactive_picks(monkeypatch):
 
 
 def test_agent_no_memberships_errors(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(_commands._client, "me", lambda hub_url, token: ("user-1", []))
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [])
 
     result = CliRunner().invoke(
         agent, ["--workspace", str(tmp_path), "--harness", "opencode"]
@@ -765,12 +733,8 @@ def test_agent_valid_config_without_harness_picks_interactively(tmp_path, monkey
 
 def test_agent_first_run_picks_harness_interactively(tmp_path, monkeypatch):
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: False)
     monkeypatch.setattr(_commands, "_pick_harness", lambda workspace: "opencode")
     monkeypatch.setattr(
@@ -829,12 +793,8 @@ def test_agent_non_interactive_auto_selects_claude(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("CLAUDECODE", "1")
     _mock_harness_on_path(monkeypatch, "claude")
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
     launched = []
     monkeypatch.setattr(
@@ -858,12 +818,8 @@ def test_agent_non_interactive_auto_selects_opencode(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("OPENCODE_CLIENT", "1")
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
     launched = []
     monkeypatch.setattr(
@@ -886,12 +842,8 @@ def test_agent_non_interactive_auto_selects_pi(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("PI_CODING_AGENT", "true")
     _mock_harness_on_path(monkeypatch, "pi")
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
     launched = []
     monkeypatch.setattr(
@@ -916,12 +868,8 @@ def test_agent_non_interactive_detected_harness_not_on_path_errors(
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setattr(_agents.shutil, "which", lambda cmd: None)
-    monkeypatch.setattr(
-        _commands, "login", lambda *, timeout: SimpleNamespace(access="tok")
-    )
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
 
     result = CliRunner().invoke(agent, ["--workspace", str(tmp_path)])

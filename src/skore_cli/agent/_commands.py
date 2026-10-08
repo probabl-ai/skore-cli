@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import rich_click as click
 
@@ -26,14 +27,13 @@ from skore_cli._agents import (
 )
 from skore_cli._style import console
 from skore_cli.agent._skore_file import SkoreConfig, ensure_gitignore_entry
-from skore_cli.hub import _client
-from skore_cli.hub._commands import _registry, generate
-from skore_cli.hub.login import login
+from skore_cli.hub._commands import generate
+
+if TYPE_CHECKING:
+    from skore._plugins.hub.authentication.registry.distant import Workspace
 
 
-def _pick_workspace(
-    memberships: list[_client.Membership],
-) -> _client.Membership:
+def _pick_workspace(memberships: list[Workspace]) -> Workspace:
     """Launch the Textual workspace picker and return the chosen membership."""
     from skore_cli.agent.app import WorkspacePicker
 
@@ -79,8 +79,9 @@ def _pick_harness(workspace: Path) -> str:
 
 def _api_key_for(ctx, config: SkoreConfig, *, login_timeout: int) -> str:
     """Return the workspace API key, minting one through ``generate`` if absent."""
-    registry = _registry()
-    api_key = registry.get(host=config.hub_url, workspace=config.workspace)
+    from skore._plugins.hub.authentication import key
+
+    api_key = key.get(host=config.hub_url, workspace=config.workspace)
 
     if api_key:
         return api_key
@@ -93,7 +94,7 @@ def _api_key_for(ctx, config: SkoreConfig, *, login_timeout: int) -> str:
         login_timeout=login_timeout,
     )
 
-    api_key = registry.get(host=config.hub_url, workspace=config.workspace)
+    api_key = key.get(host=config.hub_url, workspace=config.workspace)
 
     if not api_key:
         raise click.ClickException(
@@ -103,9 +104,7 @@ def _api_key_for(ctx, config: SkoreConfig, *, login_timeout: int) -> str:
     return api_key
 
 
-def _resolve_membership(
-    memberships: list[_client.Membership],
-) -> _client.Membership:
+def _resolve_membership(memberships: list[Workspace]) -> Workspace:
     if len(memberships) == 1:
         return memberships[0]
     if is_non_interactive():
@@ -201,10 +200,12 @@ def agent(
         harness_name = harness_name or config.harness
     else:
         from skore._plugins.hub.authentication import URI
+        from skore._plugins.hub.authentication.login import login
+        from skore._plugins.hub.authentication.registry import distant
 
         resolved_hub_url = URI()
-        token = login(timeout=login_timeout)
-        _, memberships = _client.me(resolved_hub_url, token.access)
+        token = login(host=resolved_hub_url, timeout=login_timeout)
+        memberships = distant.identity(host=resolved_hub_url, token=token).workspaces
         if not memberships:
             raise click.ClickException(
                 "you are not a member of any hub workspace; create or join one first."
@@ -214,7 +215,7 @@ def agent(
         config = SkoreConfig(
             hub_url=resolved_hub_url,
             workspace=membership.public_id,
-            workspace_id=membership.workspace_id,
+            workspace_id=membership.id,
             harness=harness_name,
         )
         config_path = config.save(workspace)

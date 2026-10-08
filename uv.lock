@@ -2042,7 +2042,6 @@ version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
-    { name = "httpx" },
     { name = "rich" },
     { name = "rich-click" },
     { name = "skore", extra = ["hub"] },
@@ -2064,7 +2063,6 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "click" },
-    { name = "httpx" },
     { name = "pre-commit", marker = "extra == 'test'" },
     { name = "pytest", marker = "extra == 'test'" },
     { name = "pytest-asyncio", marker = "extra == 'test'" },

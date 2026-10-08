@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import tomllib
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -21,14 +20,9 @@ from skore_cli._agents import (
 
 
 def _stub_hub_registry(monkeypatch, api_key):
-    import importlib
+    from skore._plugins.hub.authentication import key
 
-    hub_commands = importlib.import_module("skore_cli.hub._commands")
-    monkeypatch.setattr(
-        hub_commands,
-        "_registry",
-        lambda: SimpleNamespace(get=lambda **k: api_key),
-    )
+    monkeypatch.setattr(key, "get", lambda **k: api_key)
 
 
 def _ctx(workspace, **kwargs):

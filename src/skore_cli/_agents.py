@@ -788,15 +788,16 @@ def _configure_copilot_cli(_ctx: HarnessContext) -> dict[str, Any]:
 
 def _launch_copilot_cli(workspace: Path, model_id: str) -> None:
     """Start ``copilot`` with the same provider env as ``skore-copilot cli``."""
+    from skore._plugins.hub.authentication import key
+
     from skore_cli.agent._skore_file import SkoreConfig
-    from skore_cli.hub._commands import _registry
 
     config = SkoreConfig.load(workspace)
     if config is None or not config.hub_url:
         raise RuntimeError(
             "missing .skore; run skore agent --harness copilot-cli first."
         )
-    api_key = _registry().get(host=config.hub_url, workspace=config.workspace)
+    api_key = key.get(host=config.hub_url, workspace=config.workspace)
     if not api_key:
         raise RuntimeError(
             "missing Hub API key; run skore agent --harness copilot-cli first."

@@ -33,7 +33,6 @@ dependencies = [
   "rich-click>=1.9",
   "textual",
   "skore[hub]>=0.27",
-  "httpx",
 ]
 
 [project.optional-dependencies]
@@ -169,8 +168,6 @@ ignore_missing_imports = true
 module = [
   "rich_click.*",
   "textual.*",
-  "httpx",
-  "httpx.*",
   "skore",
   "skore.*",
 ]

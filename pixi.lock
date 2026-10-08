@@ -4459,7 +4459,6 @@ packages:
   - rich-click>=1.9
   - textual
   - skore[hub]>=0.24.0
-  - httpx
   - pre-commit ; extra == 'test'
   - pytest ; extra == 'test'
   - pytest-asyncio ; extra == 'test'
