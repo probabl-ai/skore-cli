@@ -174,6 +174,28 @@ def test_sync_transfers_between_real_local_projects(tmp_path):
     assert destination.summarize().frame()["key"].tolist() == ["model"]
 
 
+def test_sync_hub_url_resolves_before_project_construction(projects, monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        _commands,
+        "resolve_hub_uri",
+        lambda url: seen.append(url) or url,
+    )
+
+    result = CliRunner().invoke(
+        sync,
+        [
+            "experiment",
+            "--to=hub",
+            "--to-workspace=team",
+            "--hub-url=https://frontend.test",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert seen == ["https://frontend.test"]
+
+
 def test_sync_hub_does_not_require_env_api_key(projects):
     created = projects
 

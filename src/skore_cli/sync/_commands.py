@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
 import rich_click as click
+
+from skore_cli._skore import URI_ENV, resolve_hub_uri
 
 MODES = ("local", "hub", "mlflow")
 
@@ -60,8 +61,9 @@ def _render_result(result, *, dry_run: bool) -> None:
     "--hub-url",
     default=None,
     help=(
-        "Base URL of the Hub API. Defaults to the "
-        "SKORE_HUB_URI environment variable or the public Hub."
+        "Hub URL (API or frontend, e.g. https://skore.probabl.ai). "
+        "Frontend URLs are auto-resolved via /.well-known/skore-hub.json. "
+        f"Defaults to the {URI_ENV} environment variable or the public Hub."
     ),
 )
 @click.option(
@@ -118,7 +120,7 @@ def sync(
 
     try:
         if uses_hub and hub_url:
-            os.environ["SKORE_HUB_URI"] = hub_url
+            resolve_hub_uri(hub_url)
         source = Project(source_project, mode=source_mode, **source_options)
         destination = Project(
             destination_project,

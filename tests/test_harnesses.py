@@ -265,6 +265,18 @@ def test_cursor_config_points_at_the_mcp_endpoint(tmp_path):
     ]
 
 
+def test_cursor_config_prints_a_prominent_enable_hint(tmp_path):
+    """The manual enable step must stand out, not hide in a muted note."""
+    from skore_cli import _style
+
+    with _style.console.capture() as capture:
+        AGENTS["cursor"].configure(_ctx(tmp_path))
+
+    output = capture.get()
+    assert "Action required" in output
+    assert "Customize" in output
+
+
 def test_bob_shell_config_declares_the_streamable_http_url(tmp_path):
     """Bob Shell reads ``httpURL``; a plain ``url`` would mean legacy SSE."""
     AGENTS["bob"].configure(_ctx(tmp_path))

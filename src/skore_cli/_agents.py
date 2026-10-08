@@ -245,7 +245,7 @@ def _configure_cursor(ctx: HarnessContext) -> dict[str, Any]:
     These two files belong to Cursor, not to Skore, so they are read-modify-
     written: another MCP server or permission rule the user set up survives.
     """
-    from skore_cli._style import console
+    from skore_cli._style import action_required, console
     from skore_cli.agent._skore_file import ensure_gitignore_entry
 
     config_dir = ctx.workspace / ".cursor"
@@ -297,9 +297,11 @@ def _configure_cursor(ctx: HarnessContext) -> dict[str, Any]:
 
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
     console.print(f"[skore.ok]+[/] wrote [skore.path]{permissions_path}[/]")
-    console.print(
-        f"[skore.muted]  turn [skore.skill]{SKORE_PROVIDER_KEY}[/] on under "
-        f"Settings -> Tools & MCP; Cursor asks once per change to this file[/]"
+    action_required(
+        f"enable the [skore.warn]{SKORE_PROVIDER_KEY}[/] MCP server in Cursor.\n"
+        f"  [skore.muted]Cursor Settings -> Customize -> MCP, then turn[/] "
+        f"[skore.warn]{SKORE_PROVIDER_KEY}[/] [skore.muted]on.\n"
+        f"  Config: [skore.path]{config_path}[/]"
     )
     return {"config_path": str(config_path)}
 
@@ -346,13 +348,12 @@ def _configure_bob_shell(ctx: HarnessContext) -> dict[str, Any]:
 
 def _configure_bob_ide(ctx: HarnessContext) -> dict[str, Any]:
     """Configure Bob IDE, which reads a streamable-HTTP server from ``type``/``url``."""
-    from skore_cli._style import console
+    from skore_cli._style import action_required
 
     written = _configure_bob(ctx, {"type": "streamable-http", "url": ctx.mcp_url})
-    console.print(
-        "[skore.muted]  raise the network timeout for "
-        f"[skore.skill]{SKORE_PROVIDER_KEY}[/] to 5 minutes under Settings -> MCP; a "
-        "turn can outlast the 1 minute default[/]"
+    action_required(
+        f"raise the network timeout for [skore.warn]{SKORE_PROVIDER_KEY}[/] to "
+        "5 minutes under Settings -> MCP; a turn can outlast the 1 minute default."
     )
     return written
 
@@ -734,7 +735,7 @@ def _launch_bob_ide(workspace: Path, _model_id: str) -> None:
 
 
 def _launch_copilot(workspace: Path, _model_id: str) -> None:
-    from skore_cli._style import console
+    from skore_cli._style import action_required, console
 
     binary = _resolve_copilot_binary()
     if binary is None:
@@ -768,9 +769,9 @@ def _launch_copilot(workspace: Path, _model_id: str) -> None:
     user_config = _copilot_user_config_path(binary)
     _upsert_copilot_provider(user_config, provider)
     console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
-    console.print(
-        "[skore.muted]Select[/] [skore.skill]Skore Agent[/] "
-        "[skore.muted]in Copilot Chat (reload VS Code if it is missing).[/]"
+    action_required(
+        "select [skore.warn]Skore Agent[/] in Copilot Chat "
+        "(reload VS Code if it is missing)."
     )
     _exec_harness(binary, [binary, str(workspace)])
 

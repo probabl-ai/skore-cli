@@ -75,8 +75,12 @@ detected harnesses first, then the ones that are not installed.
 `--harness cursor` is Cursor IDE;
 `cursor-cli` is the `agent` binary. Bob IDE also
 accepts `--harness bobide` — the name of the command its installer puts on
-`PATH` — as an alias for `--harness bob-ide`. Use `SKORE_HUB_URI` (or
-`--hub-url`) to point at a non-default hub.
+`PATH` — as an alias for `--harness bob-ide`. Later runs reuse
+`.skore` in the project directory (gitignored); passing `--hub-url` or
+`--harness` re-writes `.skore` with the new values (a different `--hub-url`
+re-authenticates and uses the API key stored for that hub). Use `SKORE_HUB_URI`
+(or `--hub-url`) to point at a non-default hub. A frontend URL is resolved to
+the Hub API via `/.well-known/skore-hub.json`.
 
 Reading `.skore` sets `SKORE_HUB_URI` so the `skore` package talks to the same
 hub. The workspace API key stays in the credential registry and is picked up
@@ -126,8 +130,9 @@ skore sync experiment --to=mlflow --tracking-uri=http://localhost:5000
 ```
 
 Hub synchronization uses `SKORE_HUB_API_KEY` when set, otherwise the key stored by
-`skore hub api-key`. Use `--hub-url` to target a custom Hub API. Install
-`skore[mlflow]` to synchronize with MLflow.
+`skore hub api-key`. Use `--hub-url` to target a custom Hub API; a frontend URL
+is resolved via `/.well-known/skore-hub.json`. Install `skore[mlflow]` to
+synchronize with MLflow.
 
 ## Agent detection
 

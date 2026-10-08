@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,7 +24,8 @@ from skore_cli._agents import (
     normalize_harness_name,
     resolve_claude_plugin_harness,
 )
-from skore_cli._style import console
+from skore_cli._skore import URI_ENV, resolve_hub_uri
+from skore_cli._style import action_required, console
 from skore_cli.agent._skore_file import SkoreConfig, ensure_gitignore_entry
 from skore_cli.hub._commands import generate
 
@@ -127,8 +127,9 @@ def _resolve_membership(memberships: list[Workspace]) -> Workspace:
     "--hub-url",
     default=None,
     help=(
-        "Base URL of the hub (e.g. http://127.0.0.1:8000). Defaults to the "
-        "SKORE_HUB_URI env var or the public hub."
+        "Hub URL (API or frontend, e.g. https://skore.probabl.ai). "
+        "Frontend URLs are auto-resolved via /.well-known/skore-hub.json. "
+        f"Defaults to the {URI_ENV} env var or the public hub."
     ),
 )
 @click.option(
@@ -165,6 +166,9 @@ def agent(
     you pick a workspace and harness, and saves the workspace and hub URI to
     ``.skore``. The API key itself comes from ``skore hub api-key generate``,
     which is run automatically when no key is stored for that workspace.
+    Later runs reuse ``.skore``; passing ``--hub-url`` or ``--harness`` updates
+    the recorded values. A different ``--hub-url`` re-authenticates against
+    that hub and uses the key stored for it.
 
     Supported harnesses: Bob Shell, Bob IDE, Claude CLI, Claude UI, Claude
     Plugin (Cursor, VS Code, or VS Code Insiders), Cursor IDE, Cursor CLI,
@@ -182,28 +186,19 @@ def agent(
         raise click.ClickException(f"workspace does not exist: {workspace}")
 
     config = SkoreConfig.load(workspace)
+    saved_harness = config.harness if config is not None else None
 
-    if hub_url:
-        os.environ["SKORE_HUB_URI"] = hub_url
-
-        if config is not None:
-            from skore._plugins.hub.authentication import URI
-
-            config = SkoreConfig(
-                hub_url=URI(),
-                workspace=config.workspace,
-                workspace_id=config.workspace_id,
-                harness=config.harness,
-            )
-
-    if config is not None and config.workspace:
+    # The saved hub_url is stored already resolved, so a raw match modulo a
+    # trailing slash means the same hub and reuses the saved workspace.
+    if config is not None and (
+        hub_url is None or hub_url.rstrip("/") == config.hub_url.rstrip("/")
+    ):
         harness_name = harness_name or config.harness
     else:
-        from skore._plugins.hub.authentication import URI
         from skore._plugins.hub.authentication.login import login
         from skore._plugins.hub.authentication.registry import distant
 
-        resolved_hub_url = URI()
+        resolved_hub_url = resolve_hub_uri(hub_url)
         token = login(host=resolved_hub_url, timeout=login_timeout)
         memberships = distant.identity(host=resolved_hub_url, token=token).workspaces
         if not memberships:
@@ -229,6 +224,10 @@ def agent(
             detected = detect_agent()
             if detected and detected.harness_name and is_harness_installed(detected):
                 harness_name = detected.harness_name
+            elif saved_harness:
+                # The harness is hub-independent: fall back to the saved one
+                # before erroring out on a hub switch.
+                harness_name = saved_harness
             else:
                 raise click.UsageError(
                     f"pass --harness <name> (one of: {', '.join(HARNESS_NAMES)})."
@@ -265,11 +264,10 @@ def agent(
     )
     detected = detect_agent()
     if detected and detected.harness_name == harness_name:
-        console.print(
-            f"[skore.ok]+[/] {harness.harness_display_name} configured with the "
-            f"Skore Hub provider. Restart {harness.harness_display_name} or start "
-            f"a new session to "
-            f"use it."
+        action_required(
+            f"{harness.harness_display_name} is configured with the Skore Hub "
+            f"provider. Restart {harness.harness_display_name} or start a new "
+            f"session to use it."
         )
         return
     if not is_harness_installed(harness):

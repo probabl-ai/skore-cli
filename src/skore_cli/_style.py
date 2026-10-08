@@ -25,10 +25,19 @@ console = Console(
             "skore.path": "blue",
             "skore.ok": "green",
             "skore.muted": "dim",
+            "skore.warn": "bold yellow",
             "skore.cmd": "bold cyan",
         }
     )
 )
+
+
+def action_required(message: str) -> None:
+    """Print a prominent, multi-line call to action."""
+    console.print()
+    console.print(f"[skore.warn]! Action required:[/] {message}")
+    console.print()
+
 
 click.rich_click.STYLE_OPTION = "cyan"
 click.rich_click.STYLE_ARGUMENT = "cyan"
