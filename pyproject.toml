@@ -9,7 +9,7 @@ requires-python = ">=3.11"
 maintainers = [{ name = "skore developers", email = "skore@signal.probabl.ai" }]
 license = "MIT"
 license-files = ["LICENSE"]
-version = "0.4.1"
+version = "0.5.0"
 classifiers = [
   "Intended Audience :: Science/Research",
   "Intended Audience :: Developers",
@@ -32,10 +32,7 @@ dependencies = [
   "rich>=14.2",
   "rich-click>=1.9",
   "textual",
-  # The `agent` command reuses skore's authentication machinery and calls the
-  # hub identity API directly with httpx.
-  "skore[hub]>=0.24.0",
-  "httpx",
+  "skore[hub]>=0.27",
   "skore-skills @ git+https://github.com/probabl-ai/skills.git@main",
 ]
 
@@ -176,8 +173,8 @@ ignore_missing_imports = true
 module = [
   "rich_click.*",
   "textual.*",
-  "httpx",
-  "httpx.*",
+  "skore",
+  "skore.*",
 ]
 
 [tool.ty.environment]

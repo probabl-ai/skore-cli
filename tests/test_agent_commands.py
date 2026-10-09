@@ -3,21 +3,21 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from types import SimpleNamespace
 
 import pytest
 import rich_click as click
 from click.testing import CliRunner
+from skore._plugins.hub.authentication import key as hub_key
+from skore._plugins.hub.authentication import login as hub_login
+from skore._plugins.hub.authentication.registry import distant
+from skore._plugins.hub.authentication.registry.distant import Workspace
 
 from skore_cli import _agents
-from skore_cli._agents import (
-    AGENTS,
-    DEFAULT_MODEL_ID,
-    HARNESS_NAMES,
-    HarnessContext,
-)
-from skore_cli.agent import _client, _commands
+from skore_cli._agents import AGENTS, DEFAULT_MODEL_ID, HARNESS_NAMES, HarnessContext
+from skore_cli.agent import _commands
 from skore_cli.agent import app as _agent_app
 from skore_cli.agent._commands import agent
 from skore_cli.agent._skore_file import (
@@ -44,10 +44,42 @@ def _mock_harness_on_path(monkeypatch, name: str) -> None:
 
 
 def _membership(public_id: str = "ws-1", workspace_id: int = 1):
-    return _client.Membership(
-        workspace_id=workspace_id,
-        public_id=public_id,
-        permissions=frozenset(_commands.PROJECT_PERMISSIONS),
+    return Workspace(id=workspace_id, public_id=public_id, permissions=frozenset())
+
+
+def _stub_login(monkeypatch):
+    monkeypatch.setattr(
+        hub_login,
+        "login",
+        lambda *, host, timeout: SimpleNamespace(access="tok"),
+    )
+
+
+def _stub_identity(monkeypatch, workspaces):
+    monkeypatch.setattr(
+        distant,
+        "identity",
+        lambda *, host, token: SimpleNamespace(workspaces=workspaces),
+    )
+
+
+@pytest.fixture(autouse=True)
+def stub_registry(monkeypatch):
+    """Serve a stored API key so runs never reach the real credential registry."""
+    monkeypatch.setattr(hub_key, "get", lambda **kwargs: "new-secret")
+
+
+@pytest.fixture(autouse=True)
+def default_hub_uri(monkeypatch):
+    """Seed the hub URI so first-run `URI()` does not hit the public hub."""
+    monkeypatch.setenv("SKORE_HUB_URI", "http://hub.test")
+
+
+def _stub_resolve_hub_uri(monkeypatch):
+    monkeypatch.setattr(
+        _commands,
+        "resolve_hub_uri",
+        lambda url, *args, **kwargs: url or "http://hub.test",
     )
 
 
@@ -56,7 +88,6 @@ def _write_skore(directory, **overrides):
         "hub_url": "http://hub.test",
         "workspace": "ws-1",
         "workspace_id": 1,
-        "api_key": "secret-key",
         "harness": "opencode",
     }
     payload.update(overrides)
@@ -69,13 +100,19 @@ def test_skore_config_round_trip(tmp_path):
         hub_url="http://hub.test",
         workspace="ws-1",
         workspace_id=1,
-        api_key="secret",
         harness="pi",
     )
     path = config.save(tmp_path)
     loaded = SkoreConfig.load(tmp_path)
     assert path.name == SKORE_FILENAME
     assert loaded == config
+
+
+def test_skore_config_load_sets_hub_uri_env(tmp_path, monkeypatch):
+    monkeypatch.delenv("SKORE_HUB_URI", raising=False)
+    _write_skore(tmp_path)
+    SkoreConfig.load(tmp_path)
+    assert os.environ["SKORE_HUB_URI"] == "http://hub.test"
 
 
 def test_skore_config_load_invalid_returns_none(tmp_path):
@@ -96,9 +133,17 @@ def test_skore_config_load_returns_none_when_absent(tmp_path):
 
 def test_skore_config_load_returns_none_when_required_field_missing(tmp_path):
     (tmp_path / SKORE_FILENAME).write_text(
-        json.dumps({"hub_url": "http://hub.test", "workspace": "ws-1"}) + "\n"
+        json.dumps({"hub_url": "http://hub.test"}) + "\n"
     )
     assert SkoreConfig.load(tmp_path) is None
+
+
+def test_skore_config_save_omits_the_api_key(tmp_path):
+    SkoreConfig(hub_url="http://hub.test", workspace="ws-1", workspace_id=1).save(
+        tmp_path
+    )
+    payload = json.loads((tmp_path / SKORE_FILENAME).read_text())
+    assert "api_key" not in payload
 
 
 def test_skore_config_save_omits_none_harness(tmp_path):
@@ -106,7 +151,6 @@ def test_skore_config_save_omits_none_harness(tmp_path):
         hub_url="http://hub.test",
         workspace="ws-1",
         workspace_id=1,
-        api_key="secret",
     )
     config.save(tmp_path)
     payload = json.loads((tmp_path / SKORE_FILENAME).read_text())
@@ -176,9 +220,6 @@ def test_agent_invalid_harness_lists_all_supported_harnesses(tmp_path):
 def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):
     _write_skore(tmp_path)
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
     launched: list[str] = []
     monkeypatch.setattr(
         _commands,
@@ -199,30 +240,16 @@ def test_agent_uses_existing_skore_config(tmp_path, monkeypatch):
 
 
 def test_agent_hub_url_param_updates_skore_file(tmp_path, monkeypatch):
-    """Passing --hub-url overrides and rewrites the saved .skore config."""
+    """Passing a different --hub-url rewrites .skore for that hub."""
     _write_skore(tmp_path)
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    created = []
-
-    def fake_create(*args, **kwargs):
-        created.append(kwargs)
-        return 42, "new-secret"
-
-    monkeypatch.setattr(_commands._client, "create_api_key", fake_create)
+    _stub_resolve_hub_uri(monkeypatch)
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(
@@ -240,8 +267,8 @@ def test_agent_hub_url_param_updates_skore_file(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
     assert saved["hub_url"] == "http://other.hub"
-    assert saved["api_key"] == "new-secret"
-    assert len(created) == 1
+    assert saved["workspace"] == "ws-1"
+    assert "api_key" not in saved
     config = json.loads((tmp_path / "opencode.json").read_text())
     assert config["provider"]["skore"]["options"]["baseURL"] == "http://other.hub/v1"
 
@@ -250,23 +277,13 @@ def test_agent_hub_url_switch_uses_new_workspace_membership(tmp_path, monkeypatc
     """Switching hubs drops the saved workspace and resolves membership anew."""
     _write_skore(tmp_path, workspace="ws-old", workspace_id=1)
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership("ws-new", workspace_id=9)]),
-    )
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _commands._client, "create_api_key", lambda *a, **k: (42, "new-secret")
-    )
+    _stub_resolve_hub_uri(monkeypatch)
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership("ws-new", workspace_id=9)])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(
@@ -287,34 +304,25 @@ def test_agent_hub_url_switch_uses_new_workspace_membership(tmp_path, monkeypatc
     assert saved["hub_url"] == "http://other.hub"
     assert saved["workspace"] == "ws-new"
     assert saved["workspace_id"] == 9
+    assert "api_key" not in saved
 
 
 def test_agent_hub_url_switch_asks_for_workspace(tmp_path, monkeypatch):
     """Switching hubs picks a new workspace interactively across memberships."""
     _write_skore(tmp_path, workspace="ws-old", workspace_id=1)
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: (
-            "user-1",
-            [_membership("ws-a"), _membership("ws-b", workspace_id=2)],
-        ),
+    _stub_resolve_hub_uri(monkeypatch)
+    _stub_login(monkeypatch)
+    _stub_identity(
+        monkeypatch,
+        [_membership("ws-a"), _membership("ws-b", workspace_id=2)],
     )
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: False)
     monkeypatch.setattr(_commands, "_pick_workspace", lambda m: m[1])
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _commands._client, "create_api_key", lambda *a, **k: (42, "new-secret")
-    )
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(
@@ -332,29 +340,21 @@ def test_agent_hub_url_switch_asks_for_workspace(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
     assert saved["workspace"] == "ws-b"
+    assert "api_key" not in saved
 
 
-def test_agent_hub_url_param_matching_saved_reuses_key(tmp_path, monkeypatch):
+def test_agent_hub_url_param_matching_saved_reuses_config(tmp_path, monkeypatch):
     """Passing --hub-url equal to the saved one reuses the config as-is."""
     _write_skore(tmp_path)
     _mock_harness_on_path(monkeypatch, "opencode")
+    logins = []
     monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _commands._client, "create_api_key", lambda *a, **k: (42, "new-secret")
+        hub_login, "login", lambda *, host, timeout: logins.append(host)
     )
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(
@@ -370,26 +370,24 @@ def test_agent_hub_url_param_matching_saved_reuses_key(tmp_path, monkeypatch):
     )
 
     assert result.exit_code == 0, result.output
+    assert logins == []
     saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
     assert saved["hub_url"] == "http://hub.test"
-    assert saved["api_key"] == "secret-key"
+    assert "api_key" not in saved
 
 
-def test_agent_hub_url_trailing_slash_reuses_key(tmp_path, monkeypatch):
+def test_agent_hub_url_trailing_slash_reuses_config(tmp_path, monkeypatch):
     """A --hub-url equal modulo a trailing slash reuses the saved config."""
     _write_skore(tmp_path)
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
     logins = []
     monkeypatch.setattr(
-        _commands, "_ensure_login", lambda hub_url, timeout: logins.append(hub_url)
+        hub_login, "login", lambda *, host, timeout: logins.append(host)
     )
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(
@@ -408,36 +406,22 @@ def test_agent_hub_url_trailing_slash_reuses_key(tmp_path, monkeypatch):
     assert logins == []
     saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
     assert saved["hub_url"] == "http://hub.test"
-    assert saved["api_key"] == "secret-key"
+    assert "api_key" not in saved
 
 
 def test_agent_hub_switch_non_interactive_reuses_saved_harness(tmp_path, monkeypatch):
     """Switching hubs non-interactively without --harness keeps the saved one."""
     _write_skore(tmp_path)
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
+    _stub_resolve_hub_uri(monkeypatch)
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
     monkeypatch.setattr(_commands, "detect_agent", lambda: None)
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    created = []
-
-    def fake_create(*args, **kwargs):
-        created.append(kwargs)
-        return 42, "new-secret"
-
-    monkeypatch.setattr(_commands._client, "create_api_key", fake_create)
     monkeypatch.setattr(
         _commands,
         "launch_harness",
-        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID, **k: None,
     )
 
     result = CliRunner().invoke(
@@ -446,34 +430,16 @@ def test_agent_hub_switch_non_interactive_reuses_saved_harness(tmp_path, monkeyp
     )
 
     assert result.exit_code == 0, result.output
-    assert created[0]["name"] == "opencode"
     saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
     assert saved["hub_url"] == "http://other.hub"
     assert saved["harness"] == "opencode"
-    assert saved["api_key"] == "new-secret"
+    assert "api_key" not in saved
 
 
 def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
-    monkeypatch.setattr(
-        _commands._client,
-        "list_api_keys",
-        lambda *a, **k: [],
-    )
-    monkeypatch.setattr(
-        _commands._client,
-        "create_api_key",
-        lambda *a, **k: (42, "new-secret"),
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -487,8 +453,9 @@ def test_agent_creates_skore_on_first_run(tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.output
     saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
-    assert saved["api_key"] == "new-secret"
     assert saved["workspace"] == "ws-1"
+    assert saved["hub_url"] == "http://hub.test"
+    assert "api_key" not in saved
     assert ".skore" in (tmp_path / ".gitignore").read_text().splitlines()
 
 
@@ -507,21 +474,8 @@ def test_agent_saves_claude_plugin_ide(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(_agents, "is_non_interactive", lambda: False)
     monkeypatch.setattr(_agents, "_prompt_ide", lambda options: "cursor")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _commands._client,
-        "create_api_key",
-        lambda *a, **k: (42, "new-secret"),
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -555,21 +509,8 @@ def test_agent_claude_plugin_ide_flag_skips_the_menu(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _agents, "_prompt_ide", lambda options: prompted.append(options)
     )
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _commands._client,
-        "create_api_key",
-        lambda *a, **k: (42, "new-secret"),
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -605,9 +546,6 @@ def test_agent_reuses_saved_claude_plugin_ide(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _agents, "_prompt_ide", lambda options: prompted.append(options)
     )
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
     launched: list[str | None] = []
     monkeypatch.setattr(
         _commands,
@@ -629,9 +567,6 @@ def test_agent_reuses_saved_claude_plugin_ide(tmp_path, monkeypatch):
 def test_agent_accepts_claude_cli_alias(tmp_path, monkeypatch):
     _write_skore(tmp_path, harness="opencode")
     _mock_harness_on_path(monkeypatch, "claude")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
     launched: list[str] = []
     monkeypatch.setattr(
         _commands,
@@ -661,21 +596,8 @@ def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(
     and stored under the canonical ``bob-ide`` name."""
     monkeypatch.setattr(_agents.sys, "platform", "linux")
     _mock_harness_on_path(monkeypatch, "bobide")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _commands._client,
-        "create_api_key",
-        lambda *a, **k: (42, "new-secret"),
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -689,7 +611,6 @@ def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(
     assert result.exit_code == 0, result.output
     assert "not installed or not on PATH" not in _plain_output(result.output)
     saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
-    assert saved["api_key"] == "new-secret"
     assert saved["harness"] == "bob-ide"
     mcp = json.loads((tmp_path / ".bob" / "mcp.json").read_text())
     assert mcp["mcpServers"]["skore"]["url"] == "http://hub.test/mcp"
@@ -697,15 +618,8 @@ def test_agent_bob_ide_first_run_on_linux_writes_mcp_config(
 
 def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client,
-        "me",
-        lambda hub_url, token: ("user-1", [_membership()]),
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
 
     result = CliRunner().invoke(agent, ["--workspace", str(tmp_path)])
@@ -714,13 +628,38 @@ def test_agent_non_interactive_without_harness_errors(tmp_path, monkeypatch):
     assert "pass --harness" in _plain_output(result.output)
 
 
-def test_resolve_api_key_name_deduplicates():
-    assert _commands._resolve_api_key_name("opencode", []) == "opencode"
-    assert _commands._resolve_api_key_name("opencode", ["opencode"]) == "opencode-2"
-    assert (
-        _commands._resolve_api_key_name("opencode", ["opencode", "opencode-2"])
-        == "opencode-3"
+def test_agent_generates_api_key_when_none_is_stored(tmp_path, monkeypatch):
+    _mock_harness_on_path(monkeypatch, "opencode")
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
+    monkeypatch.setattr(
+        _commands,
+        "launch_harness",
+        lambda selected, workspace, model_id=DEFAULT_MODEL_ID: None,
     )
+
+    stored: dict[tuple[str, str], str] = {}
+    generated = []
+
+    def fake_generate(*, host, workspace, name, login_timeout):
+        generated.append((host, workspace))
+        stored[(host, workspace)] = "minted-secret"
+
+    monkeypatch.setattr(
+        hub_key,
+        "get",
+        lambda *, host, workspace: stored.get((host, workspace)),
+    )
+    monkeypatch.setattr(_commands, "generate", fake_generate)
+
+    result = CliRunner().invoke(
+        agent, ["--workspace", str(tmp_path), "--harness", "opencode"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert generated == [("http://hub.test", "ws-1")]
+    provider = json.loads((tmp_path / "opencode.json").read_text())["provider"]
+    assert provider["skore"]["options"]["apiKey"] == "minted-secret"
 
 
 # --------------------------------------------------------------------------- #
@@ -742,20 +681,6 @@ def test_is_non_interactive_without_tty(monkeypatch):
     monkeypatch.setattr(_agents.sys, "stdin", SimpleNamespace(isatty=lambda: True))
     monkeypatch.setattr(_agents.sys, "stdout", SimpleNamespace(isatty=lambda: False))
     assert _commands.is_non_interactive() is True
-
-
-# --------------------------------------------------------------------------- #
-# _ensure_login
-# --------------------------------------------------------------------------- #
-
-
-def test_ensure_login_delegates_to_hub_auth(monkeypatch):
-    seen = {}
-    monkeypatch.setattr(
-        _commands, "ensure_login", lambda *, timeout: seen.setdefault("t", timeout)
-    )
-    _commands._ensure_login("http://hub.test", timeout=42)
-    assert seen["t"] == 42
 
 
 # --------------------------------------------------------------------------- #
@@ -883,91 +808,21 @@ def test_pick_harness_aborts_when_cancelled(tmp_path, monkeypatch):
 
 def test_resolve_membership_single_membership_auto_selected():
     only = _membership("ws-1")
-    assert _commands._resolve_membership([only], None) is only
-
-
-def test_resolve_membership_matches_saved_workspace():
-    memberships = [_membership("ws-1"), _membership("ws-2", workspace_id=2)]
-    assert _commands._resolve_membership(memberships, "ws-2").public_id == "ws-2"
-
-
-def test_resolve_membership_unknown_workspace_errors():
-    with pytest.raises(click.ClickException, match="not in your memberships"):
-        _commands._resolve_membership([_membership("ws-1")], "ws-missing")
+    assert _commands._resolve_membership([only]) is only
 
 
 def test_resolve_membership_multiple_non_interactive_errors(monkeypatch):
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
     memberships = [_membership("ws-1"), _membership("ws-2", workspace_id=2)]
     with pytest.raises(click.UsageError, match="run interactively"):
-        _commands._resolve_membership(memberships, None)
+        _commands._resolve_membership(memberships)
 
 
 def test_resolve_membership_multiple_interactive_picks(monkeypatch):
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: False)
     memberships = [_membership("ws-1"), _membership("ws-2", workspace_id=2)]
     monkeypatch.setattr(_commands, "_pick_workspace", lambda m: m[1])
-    assert _commands._resolve_membership(memberships, None).public_id == "ws-2"
-
-
-# --------------------------------------------------------------------------- #
-# _create_workspace_api_key
-# --------------------------------------------------------------------------- #
-
-
-def test_create_workspace_api_key_mints_secret(monkeypatch):
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    captured = {}
-
-    def fake_create(hub_url, token, user_id, **kwargs):
-        captured.update(kwargs)
-        return 7, "the-secret"
-
-    monkeypatch.setattr(_commands._client, "create_api_key", fake_create)
-
-    secret = _commands._create_workspace_api_key(
-        "http://hub.test", "tok", "user-1", _membership(), "opencode"
-    )
-
-    assert secret == "the-secret"
-    assert captured["name"] == "opencode"
-    assert set(captured["permissions"]) == set(_commands.PROJECT_PERMISSIONS)
-
-
-def test_create_workspace_api_key_requires_permissions():
-    membership = _client.Membership(
-        workspace_id=1, public_id="ws-1", permissions=frozenset()
-    )
-    with pytest.raises(click.ClickException, match="cannot create project API keys"):
-        _commands._create_workspace_api_key(
-            "http://hub.test", "tok", "user-1", membership, "opencode"
-        )
-
-
-def test_create_workspace_api_key_dedupes_name_within_workspace(monkeypatch):
-    existing = [
-        _client.ApiKeyInfo(
-            id=1,
-            name="opencode",
-            workspace_id=1,
-            created_at=None,
-            expires_at=None,
-        )
-    ]
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: existing)
-    captured = {}
-
-    def fake_create(hub_url, token, user_id, **kwargs):
-        captured.update(kwargs)
-        return 2, "secret"
-
-    monkeypatch.setattr(_commands._client, "create_api_key", fake_create)
-
-    _commands._create_workspace_api_key(
-        "http://hub.test", "tok", "user-1", _membership(), "opencode"
-    )
-
-    assert captured["name"] == "opencode-2"
+    assert _commands._resolve_membership(memberships).public_id == "ws-2"
 
 
 # --------------------------------------------------------------------------- #
@@ -976,11 +831,8 @@ def test_create_workspace_api_key_dedupes_name_within_workspace(monkeypatch):
 
 
 def test_agent_no_memberships_errors(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(_commands._client, "me", lambda hub_url, token: ("user-1", []))
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [])
 
     result = CliRunner().invoke(
         agent, ["--workspace", str(tmp_path), "--harness", "opencode"]
@@ -993,10 +845,6 @@ def test_agent_no_memberships_errors(tmp_path, monkeypatch):
 def test_agent_errors_when_harness_not_installed(tmp_path, monkeypatch):
     _write_skore(tmp_path)
     monkeypatch.setattr(_agents.shutil, "which", lambda cmd: None)
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
-
     result = CliRunner().invoke(
         agent, ["--workspace", str(tmp_path), "--harness", "opencode"]
     )
@@ -1011,18 +859,14 @@ def test_agent_errors_when_harness_not_installed(tmp_path, monkeypatch):
 def test_agent_valid_config_without_harness_non_interactive_errors(
     tmp_path, monkeypatch
 ):
-    # Config is complete (api_key + workspace) but no harness was ever saved.
+    # Config is complete (hub_url + workspace) but no harness was ever saved.
     _clear_agent_envs(monkeypatch)
     payload = {
         "hub_url": "http://hub.test",
         "workspace": "ws-1",
         "workspace_id": 1,
-        "api_key": "secret-key",
     }
     (tmp_path / SKORE_FILENAME).write_text(json.dumps(payload) + "\n")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
 
     result = CliRunner().invoke(agent, ["--workspace", str(tmp_path)])
@@ -1036,13 +880,9 @@ def test_agent_valid_config_without_harness_picks_interactively(tmp_path, monkey
         "hub_url": "http://hub.test",
         "workspace": "ws-1",
         "workspace_id": 1,
-        "api_key": "secret-key",
     }
     (tmp_path / SKORE_FILENAME).write_text(json.dumps(payload) + "\n")
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: False)
     monkeypatch.setattr(_commands, "_pick_harness", lambda workspace: "opencode")
     monkeypatch.setattr(
@@ -1060,19 +900,10 @@ def test_agent_valid_config_without_harness_picks_interactively(tmp_path, monkey
 
 def test_agent_first_run_picks_harness_interactively(tmp_path, monkeypatch):
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: False)
     monkeypatch.setattr(_commands, "_pick_harness", lambda workspace: "opencode")
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _commands._client, "create_api_key", lambda *a, **k: (1, "new-secret")
-    )
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -1084,15 +915,11 @@ def test_agent_first_run_picks_harness_interactively(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     saved = json.loads((tmp_path / SKORE_FILENAME).read_text())
     assert saved["harness"] == "opencode"
-    assert saved["api_key"] == "new-secret"
 
 
 def test_agent_rewrites_config_when_harness_changes(tmp_path, monkeypatch):
     _write_skore(tmp_path, harness="claude")
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
     monkeypatch.setattr(
         _commands,
         "launch_harness",
@@ -1133,18 +960,9 @@ def test_agent_non_interactive_auto_selects_claude(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("CLAUDECODE", "1")
     _mock_harness_on_path(monkeypatch, "claude")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _commands._client, "create_api_key", lambda *a, **k: (1, "new-secret")
-    )
     launched = []
     monkeypatch.setattr(
         _commands,
@@ -1167,18 +985,9 @@ def test_agent_non_interactive_auto_selects_opencode(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("OPENCODE_CLIENT", "1")
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _commands._client, "create_api_key", lambda *a, **k: (1, "new-secret")
-    )
     launched = []
     monkeypatch.setattr(
         _commands,
@@ -1200,18 +1009,9 @@ def test_agent_non_interactive_auto_selects_pi(tmp_path, monkeypatch):
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("PI_CODING_AGENT", "true")
     _mock_harness_on_path(monkeypatch, "pi")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
-    monkeypatch.setattr(_commands._client, "list_api_keys", lambda *a, **k: [])
-    monkeypatch.setattr(
-        _commands._client, "create_api_key", lambda *a, **k: (1, "new-secret")
-    )
     launched = []
     monkeypatch.setattr(
         _commands,
@@ -1235,13 +1035,8 @@ def test_agent_non_interactive_detected_harness_not_on_path_errors(
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setattr(_agents.shutil, "which", lambda cmd: None)
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: "http://hub.test"
-    )
-    monkeypatch.setattr(_commands, "_ensure_login", lambda hub_url, timeout: "tok")
-    monkeypatch.setattr(
-        _commands._client, "me", lambda hub_url, token: ("user-1", [_membership()])
-    )
+    _stub_login(monkeypatch)
+    _stub_identity(monkeypatch, [_membership()])
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
 
     result = CliRunner().invoke(agent, ["--workspace", str(tmp_path)])
@@ -1256,9 +1051,6 @@ def test_agent_detected_different_harness_still_launches(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDECODE", "1")
     _mock_harness_on_path(monkeypatch, "opencode")
     _write_skore(tmp_path)
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
     launched = []
     monkeypatch.setattr(
         _commands,
@@ -1277,20 +1069,16 @@ def test_agent_detected_different_harness_still_launches(tmp_path, monkeypatch):
 
 
 def test_agent_reuse_path_auto_selects_detected_harness(tmp_path, monkeypatch):
-    """Config exists with api_key but no harness; non-interactive + detected."""
+    """Config exists but no harness; non-interactive + detected."""
     _clear_agent_envs(monkeypatch)
     monkeypatch.setenv("OPENCODE_CLIENT", "1")
     payload = {
         "hub_url": "http://hub.test",
         "workspace": "ws-1",
         "workspace_id": 1,
-        "api_key": "secret-key",
     }
     (tmp_path / SKORE_FILENAME).write_text(json.dumps(payload) + "\n")
     _mock_harness_on_path(monkeypatch, "opencode")
-    monkeypatch.setattr(
-        _commands, "resolve_hub_uri", lambda url, *a, **k: url or "http://hub.test"
-    )
     monkeypatch.setattr(_commands, "is_non_interactive", lambda: True)
     launched = []
     monkeypatch.setattr(

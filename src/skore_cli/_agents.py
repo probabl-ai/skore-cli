@@ -72,8 +72,6 @@ CODEX_PROVIDER_KEY = "skore"
 CODEX_PROVIDER_NAME = "Skore Agent"
 CODEX_PROJECT_CONFIG = ".codex/skore-provider.toml"
 CODEX_API_KEY_ENV = "SKORE_AGENT_API_KEY"
-SDK_API_KEY_ENV = "SKORE_HUB_API_KEY"
-SDK_URI_ENV = "SKORE_HUB_URI"
 
 
 @dataclass(frozen=True)
@@ -247,7 +245,7 @@ def _configure_cursor(ctx: HarnessContext) -> dict[str, Any]:
     These two files belong to Cursor, not to Skore, so they are read-modify-
     written: another MCP server or permission rule the user set up survives.
     """
-    from skore_cli._style import console
+    from skore_cli._style import action_required, console
     from skore_cli.agent._skore_file import ensure_gitignore_entry
 
     config_dir = ctx.workspace / ".cursor"
@@ -299,9 +297,11 @@ def _configure_cursor(ctx: HarnessContext) -> dict[str, Any]:
 
     console.print(f"[skore.ok]+[/] wrote [skore.path]{config_path}[/]")
     console.print(f"[skore.ok]+[/] wrote [skore.path]{permissions_path}[/]")
-    console.print(
-        f"[skore.muted]  turn [skore.skill]{SKORE_PROVIDER_KEY}[/] on under "
-        f"Settings -> Tools & MCP; Cursor asks once per change to this file[/]"
+    action_required(
+        f"enable the [skore.warn]{SKORE_PROVIDER_KEY}[/] MCP server in Cursor.\n"
+        f"  [skore.muted]Cursor Settings -> Customize -> MCP, then turn[/] "
+        f"[skore.warn]{SKORE_PROVIDER_KEY}[/] [skore.muted]on.\n"
+        f"  Config: [skore.path]{config_path}[/]"
     )
     return {"config_path": str(config_path)}
 
@@ -348,13 +348,12 @@ def _configure_bob_shell(ctx: HarnessContext) -> dict[str, Any]:
 
 def _configure_bob_ide(ctx: HarnessContext) -> dict[str, Any]:
     """Configure Bob IDE, which reads a streamable-HTTP server from ``type``/``url``."""
-    from skore_cli._style import console
+    from skore_cli._style import action_required
 
     written = _configure_bob(ctx, {"type": "streamable-http", "url": ctx.mcp_url})
-    console.print(
-        "[skore.muted]  raise the network timeout for "
-        f"[skore.skill]{SKORE_PROVIDER_KEY}[/] to 5 minutes under Settings -> MCP; a "
-        "turn can outlast the 1 minute default[/]"
+    action_required(
+        f"raise the network timeout for [skore.warn]{SKORE_PROVIDER_KEY}[/] to "
+        "5 minutes under Settings -> MCP; a turn can outlast the 1 minute default."
     )
     return written
 
@@ -736,7 +735,7 @@ def _launch_bob_ide(workspace: Path, _model_id: str) -> None:
 
 
 def _launch_copilot(workspace: Path, _model_id: str) -> None:
-    from skore_cli._style import console
+    from skore_cli._style import action_required, console
 
     binary = _resolve_copilot_binary()
     if binary is None:
@@ -770,9 +769,9 @@ def _launch_copilot(workspace: Path, _model_id: str) -> None:
     user_config = _copilot_user_config_path(binary)
     _upsert_copilot_provider(user_config, provider)
     console.print(f"[skore.ok]+[/] synced [skore.path]{user_config}[/]")
-    console.print(
-        "[skore.muted]Select[/] [skore.skill]Skore Agent[/] "
-        "[skore.muted]in Copilot Chat (reload VS Code if it is missing).[/]"
+    action_required(
+        "select [skore.warn]Skore Agent[/] in Copilot Chat "
+        "(reload VS Code if it is missing)."
     )
     _exec_harness(binary, [binary, str(workspace)])
 
@@ -782,23 +781,29 @@ def _configure_copilot_cli(_ctx: HarnessContext) -> dict[str, Any]:
     from skore_cli._style import console
 
     console.print(
-        "[skore.muted]Copilot CLI uses the Hub key from[/] [skore.path].skore[/] "
-        "[skore.muted]at launch; no extra project file is written.[/]"
+        "[skore.muted]Copilot CLI uses the Hub key from the credential "
+        "registry at launch; no extra project file is written.[/]"
     )
     return {}
 
 
 def _launch_copilot_cli(workspace: Path, model_id: str) -> None:
     """Start ``copilot`` with the same provider env as ``skore-copilot cli``."""
+    from skore._plugins.hub.authentication import key
+
     from skore_cli.agent._skore_file import SkoreConfig
 
     config = SkoreConfig.load(workspace)
-    if config is None or not config.api_key or not config.hub_url:
+    if config is None or not config.hub_url:
         raise RuntimeError(
             "missing .skore; run skore agent --harness copilot-cli first."
         )
+    api_key = key.get(host=config.hub_url, workspace=config.workspace)
+    if not api_key:
+        raise RuntimeError(
+            "missing Hub API key; run skore agent --harness copilot-cli first."
+        )
     hub_url = config.hub_url
-    api_key = config.api_key
     env = os.environ.copy()
     env["COPILOT_PROVIDER_TYPE"] = "openai"
     env["COPILOT_PROVIDER_BASE_URL"] = f"{hub_url.rstrip('/')}/v1"
@@ -844,24 +849,6 @@ def _launch_codex(workspace: Path, model_id: str) -> None:
     for override in _codex_config_overrides(base_url):
         argv.extend(["--config", override])
     _exec_harness("codex", argv, env=env)
-
-
-def _export_sdk_credentials(workspace: Path) -> None:
-    """Publish the ``.skore`` credentials the ``skore`` package reads.
-
-    The harness config only authenticates the harness itself. ``skore.login()``
-    looks the API key up in ``SKORE_HUB_API_KEY`` and otherwise falls back to an
-    interactive browser flow, so every experiment process the agent spawns would
-    open its own OAuth tab. Values already present in the environment win, so a
-    user's own key or hub keeps precedence.
-    """
-    from skore_cli.agent._skore_file import SkoreConfig
-
-    config = SkoreConfig.load(workspace)
-    if config is None:
-        return
-    os.environ.setdefault(SDK_API_KEY_ENV, config.api_key)
-    os.environ.setdefault(SDK_URI_ENV, config.hub_url)
 
 
 def _exec_harness(
@@ -1209,5 +1196,8 @@ def launch_harness(
     console.print(
         f"[skore.ok]Launching[/] [skore.skill]{agent.harness_display_name}[/] ..."
     )
-    _export_sdk_credentials(workspace)
+    from skore_cli.agent._skore_file import SkoreConfig
+
+    if "SKORE_HUB_URI" not in os.environ:
+        SkoreConfig.load(workspace)
     agent.launch(workspace, model_id)

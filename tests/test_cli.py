@@ -1,11 +1,9 @@
-"""Tests for the CLI wiring, the lazy `skore` accessor and the plugin host."""
+"""Tests for the CLI wiring and the plugin host."""
 
 from __future__ import annotations
 
 import os
-from types import SimpleNamespace
 
-import pytest
 import rich_click as click
 
 from skore_cli import _plugins, _skore
@@ -14,7 +12,7 @@ from skore_cli import _plugins, _skore
 def test_cli_exposes_builtin_commands():
     from skore_cli import cli
 
-    assert {"skills", "agent", "sync"} == set(cli.commands)
+    assert {"skills", "agent", "hub", "sync"} == set(cli.commands)
 
 
 def test_cli_without_subcommand_shows_plain_help():
@@ -27,6 +25,7 @@ def test_cli_without_subcommand_shows_plain_help():
     assert result.exit_code == 0
     assert "Skore command-line interface." in result.output
     assert "agent" in result.output
+    assert "hub" in result.output
     assert "skills" in result.output
     assert "Quick start:" in result.output
 
@@ -156,73 +155,39 @@ def test_cli_subcommand_help_omits_banner():
 
 
 # --------------------------------------------------------------------------- #
-# _skore.auth
+# Hub URL resolution
 # --------------------------------------------------------------------------- #
 
 
-def test_auth_returns_module(monkeypatch):
-    sentinel = SimpleNamespace(name="fake-module")
-    monkeypatch.setattr(_skore.importlib, "import_module", lambda name: sentinel)
-
-    assert _skore.auth("uri") is sentinel
-
-
-def test_auth_imports_expected_path(monkeypatch):
-    seen = {}
-
-    def fake_import(name):
-        seen["name"] = name
-        return SimpleNamespace()
-
-    monkeypatch.setattr(_skore.importlib, "import_module", fake_import)
-
-    _skore.auth("token")
-    assert seen["name"] == "skore._plugins.hub.authentication.token"
-
-
-def test_auth_missing_skore_raises_click_exception(monkeypatch):
-    def fake_import(name):
-        raise ImportError("no skore")
-
-    monkeypatch.setattr(_skore.importlib, "import_module", fake_import)
-
-    with pytest.raises(click.ClickException) as excinfo:
-        _skore.auth("store")
-    assert "skore" in str(excinfo.value)
+def _stub_uri(monkeypatch, value="https://resolved.test"):
+    monkeypatch.setattr("skore._plugins.hub.authentication.URI", lambda: value)
 
 
 def test_resolve_hub_uri_without_url_keeps_env_unchanged(monkeypatch):
-    module = SimpleNamespace(URI=lambda: "https://resolved.test")
-
+    _stub_uri(monkeypatch)
     monkeypatch.delenv(_skore.URI_ENV, raising=False)
 
-    assert _skore.resolve_hub_uri(None, lambda _: module) == "https://resolved.test"
+    assert _skore.resolve_hub_uri(None) == "https://resolved.test"
     assert _skore.URI_ENV not in os.environ
 
 
 def test_resolve_hub_uri_sets_explicit_url(monkeypatch):
-    module = SimpleNamespace(URI=lambda: "https://resolved.test")
-
+    _stub_uri(monkeypatch)
     monkeypatch.delenv(_skore.URI_ENV, raising=False)
     monkeypatch.setattr(_skore, "_discover_api_url", lambda url: None)
 
-    assert _skore.resolve_hub_uri("https://hub.test", lambda _: module) == (
-        "https://resolved.test"
-    )
+    assert _skore.resolve_hub_uri("https://hub.test") == "https://resolved.test"
     assert os.environ[_skore.URI_ENV] == "https://hub.test"
 
 
 def test_resolve_hub_uri_discovers_api_url_from_frontend(monkeypatch):
-    module = SimpleNamespace(URI=lambda: "https://resolved.test")
-
+    _stub_uri(monkeypatch)
     monkeypatch.delenv(_skore.URI_ENV, raising=False)
     monkeypatch.setattr(
         _skore, "_discover_api_url", lambda url: "https://api.discovered.test"
     )
 
-    assert _skore.resolve_hub_uri("https://frontend.test", lambda _: module) == (
-        "https://resolved.test"
-    )
+    assert _skore.resolve_hub_uri("https://frontend.test") == "https://resolved.test"
     assert os.environ[_skore.URI_ENV] == "https://api.discovered.test"
 
 
