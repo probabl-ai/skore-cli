@@ -32,10 +32,7 @@ dependencies = [
   "rich>=14.2",
   "rich-click>=1.9",
   "textual",
-  # The `agent` command reuses skore's authentication machinery and calls the
-  # hub identity API directly with httpx.
-  "skore[hub]>=0.24.0",
-  "httpx",
+  "skore[hub]>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -171,8 +168,8 @@ ignore_missing_imports = true
 module = [
   "rich_click.*",
   "textual.*",
-  "httpx",
-  "httpx.*",
+  "skore",
+  "skore.*",
 ]
 
 [tool.ty.environment]

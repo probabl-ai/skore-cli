@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-import os
 from pathlib import Path
 from typing import Any
 
@@ -12,24 +10,6 @@ import rich_click as click
 from skore_cli._skore import URI_ENV, resolve_hub_uri
 
 MODES = ("local", "hub", "mlflow")
-API_KEY_ENV = "SKORE_HUB_API_KEY"
-
-
-def _project_api():
-    """Import the public project API only when synchronization runs."""
-    try:
-        skore = importlib.import_module("skore")
-    except ImportError as error:  # pragma: no cover - exercised through the command
-        raise click.ClickException(
-            "this command needs the `skore` package (install it with `pip install "
-            "skore-cli`)."
-        ) from error
-    if not hasattr(skore.Project, "sync"):
-        raise click.ClickException(
-            "synchronization requires `skore>=0.24.0`; upgrade it with "
-            "`pip install --upgrade skore`."
-        )
-    return skore.Project, skore.login
 
 
 def _endpoint_options(
@@ -135,14 +115,12 @@ def sync(
     uses_hub = "hub" in (source_mode, destination_mode)
     if hub_url is not None and not uses_hub:
         raise click.UsageError("--hub-url requires a Hub endpoint.")
-    if uses_hub and not os.environ.get(API_KEY_ENV):
-        raise click.ClickException(f"Hub synchronization requires {API_KEY_ENV}.")
+
+    from skore import Project
 
     try:
-        Project, login = _project_api()
-        if uses_hub:
+        if uses_hub and hub_url:
             resolve_hub_uri(hub_url)
-            login(mode="hub")
         source = Project(source_project, mode=source_mode, **source_options)
         destination = Project(
             destination_project,
