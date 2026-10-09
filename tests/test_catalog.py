@@ -118,9 +118,12 @@ def test_load_catalog_falls_back_to_catalog_json(tmp_path, catalog_dict):
 def test_fetch_release(release, catalog_dict):
     tag, root, catalog = _catalog.fetch_release()
 
-    assert tag == "0.1.0"
+    assert tag == "main"
     assert (root / ".catalog.json").is_file()
     assert catalog == catalog_dict
+    assert release["urls"] == [
+        "https://api.github.com/repos/probabl-ai/skills/tarball/main"
+    ]
 
 
 def test_fetch_release_custom_repo(release, catalog_dict):
@@ -129,9 +132,9 @@ def test_fetch_release_custom_repo(release, catalog_dict):
 
     tag, root, catalog = _catalog.fetch_release("acme/skills")
 
-    assert tag == "2.0.0"
+    assert tag == "main"
     assert catalog == other
-    assert any("/repos/acme/skills/" in url for url in release["urls"])
+    assert release["urls"] == ["https://api.github.com/repos/acme/skills/tarball/main"]
     assert (root / ".catalog.json").is_file()
 
 

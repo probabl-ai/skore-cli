@@ -87,21 +87,20 @@ def _manage_targets(agent: tuple[str, ...], *, global_: bool) -> list[tuple[str,
 
 @contextmanager
 def _release(repo: str = GITHUB_REPO) -> Iterator[tuple[str, Path, dict[str, Any]]]:
-    """Fetch the latest release and clean up its extracted files afterwards.
+    """Fetch the main branch and clean up its extracted files afterwards.
 
     Surfaces network/parsing failures as a :class:`click.ClickException` rather
     than a raw traceback, and removes the temporary extraction directory once
     the wrapped command is done with it.
     """
     with console.status(
-        f"Fetching latest skills release from {repo}...", spinner="dots"
+        f"Fetching skills from the main branch of {repo}...", spinner="dots"
     ):
         try:
             tag, root, catalog = fetch_release(repo)
         except (OSError, ValueError, KeyError) as error:
             raise click.ClickException(
-                f"Could not fetch the latest skills release from GitHub "
-                f"({repo}): {error}"
+                f"Could not fetch the main branch from GitHub ({repo}): {error}"
             ) from error
 
     try:
@@ -450,7 +449,7 @@ def _copy_selected_skills(
     except ValueError as error:
         raise click.ClickException(str(error)) from error
 
-    tree = Tree(f"Installing {len(selected)} skill(s) from {repo} release {tag}")
+    tree = Tree(f"Installing {len(selected)} skill(s) from {repo} branch {tag}")
     for _, target in targets:
         branch = tree.add(f"[skore.path]{target}[/]")
         for skill in selected:
@@ -480,7 +479,7 @@ def _copy_selected_skills(
 @click.group(invoke_without_command=True)
 @click.pass_context
 def skills(ctx) -> None:
-    """Install and manage Agent Skills from the probabl-ai/skills release."""
+    """Install and manage Agent Skills from the probabl-ai/skills main branch."""
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
@@ -500,10 +499,10 @@ def skills(ctx) -> None:
     "--all",
     "all_",
     is_flag=True,
-    help="Install every skill from the latest release (non-interactive).",
+    help="Install every skill from the main branch (non-interactive).",
 )
 def install(ids, agent, global_, repo, all_) -> None:
-    """Install skill(s) or workflow(s) from the latest release.
+    """Install skill(s) or workflow(s) from the main branch.
 
     Run without arguments to launch the interactive installer (a tabbed wizard
     for the GitHub source, skill selection, target agent and install scope).
@@ -555,7 +554,7 @@ def install(ids, agent, global_, repo, all_) -> None:
             shutil.rmtree(root.parent, ignore_errors=True)
         console.print(
             f"[skore.ok]+[/] installed [skore.skill]{len(selected)}[/] skill(s) "
-            f"into {n_targets} location(s) from {repo} release {tag}"
+            f"into {n_targets} location(s) from {repo} branch {tag}"
         )
         return
 
@@ -584,7 +583,7 @@ def install(ids, agent, global_, repo, all_) -> None:
 
     console.print(
         f"[skore.ok]+[/] installed [skore.skill]{len(selected)}[/] skill(s) "
-        f"into {n_targets} location(s) from {repo} release {tag}"
+        f"into {n_targets} location(s) from {repo} branch {tag}"
     )
 
 
@@ -627,7 +626,7 @@ def list_skills(agent, global_) -> None:
 @_global_option
 @click.option("--all", "all_", is_flag=True, help="Update every installed skill.")
 def update(ids, agent, global_, all_) -> None:
-    """Update installed skills to the latest release of their recorded source.
+    """Update installed skills to the main branch of their recorded source.
 
     Pass skill ids to update, or ``--all`` to update every installed skill.
     Each skill is fetched from the GitHub repository stored at install time.

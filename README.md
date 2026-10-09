@@ -38,10 +38,11 @@ user-wide install and `--agent`/`-a` to target specific agents (`agents`,
 `claude-code`, `cursor`, `codex`, `gemini`, `windsurf`, `cline`, `roo`, `amp`,
 `github-copilot`, `bob`, `bob-ide`). Pass `--repo owner/name` on
 **install** to pull from another GitHub catalog that ships `.catalog.json`
-(the default is `probabl-ai/skills`). Interactive `skore skills install` also
-lets you edit that `owner/name` in the wizard; `--repo` only pre-fills the
-field. `list` and `update` reuse the stored source and show it in their output;
-they do not take `--repo`.
+(the default is `probabl-ai/skills`). Install and update follow the `main`
+branch of that repository, not its latest GitHub release. Interactive
+`skore skills install` also lets you edit that `owner/name` in the wizard;
+`--repo` only pre-fills the field. `list` and `update` reuse the stored source
+and show it in their output; they do not take `--repo`.
 
 `agents` is the cross-client default (`.agents/skills`). Other names write the
 tool's native `SKILL.md` directory. Most global installs mirror that folder

@@ -1,4 +1,4 @@
-"""Fetch and parse the skill catalog from a GitHub skills release."""
+"""Fetch and parse the skill catalog from a GitHub skills repository."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 GITHUB_REPO = "probabl-ai/skills"
+SKILLS_REF = "main"
 _USER_AGENT = "skore-skills-cli"
 CATALOG_FILENAMES = (".catalog.json", "catalog.json")
 
@@ -134,7 +135,7 @@ def load_catalog(root: Path) -> dict[str, Any]:
 
 
 def fetch_release(repo: str = GITHUB_REPO) -> tuple[str, Path, dict[str, Any]]:
-    """Resolve, download and parse the latest release of ``repo``.
+    """Download and parse the ``main`` branch of ``repo``.
 
     Parameters
     ----------
@@ -143,14 +144,13 @@ def fetch_release(repo: str = GITHUB_REPO) -> tuple[str, Path, dict[str, Any]]:
 
     Returns
     -------
-    tag : str
-        The tag name of the latest release.
+    ref : str
+        The git ref that was downloaded (``main``).
     root : Path
         The path to the extracted repository root.
     catalog : dict
         The parsed content of the catalog file.
     """
-    tag = latest_release_tag(repo)
-    root = download_release(tag, repo)
+    root = download_release(SKILLS_REF, repo)
     catalog = load_catalog(root)
-    return tag, root, catalog
+    return SKILLS_REF, root, catalog
