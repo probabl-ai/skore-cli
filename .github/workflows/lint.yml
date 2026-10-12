@@ -27,12 +27,21 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pixi
+        id: setup-pixi
+        continue-on-error: true
         uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
         with:
           environments: lint
           # Install strictly from the committed pixi.lock so CI runs against the
           # locked dependencies. The lock file is refreshed by the weekly
           # update_pixi_lock_files workflow.
+          frozen: true
+
+      - name: Retry Pixi setup
+        if: ${{ steps.setup-pixi.outcome == 'failure' }}
+        uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
+        with:
+          environments: lint
           frozen: true
 
       - name: Lint
