@@ -1,4 +1,14 @@
-# skore-cli
+# skore-cli (archived)
+
+> [!WARNING]
+> **This repository is archived.** The CLI was merged into
+> [probabl-ai/skore](https://github.com/probabl-ai/skore) to simplify the
+> install, so this repository is no longer maintained and the `skore-cli`
+> distribution is no longer the install target. Install the `skore` package
+> instead: it provides the same `skore` command and subcommands.
+>
+> See the [CLI documentation](https://skore.probabl.ai/user_guide/cli.html)
+> and the [command reference](https://skore.probabl.ai/reference/cli/index.html).
 
 [![PyPI](https://img.shields.io/pypi/v/skore-cli)](https://pypi.org/project/skore-cli/)
 [![Python versions](https://img.shields.io/pypi/pyversions/skore-cli)](https://pypi.org/project/skore-cli/)
@@ -8,7 +18,7 @@
 
 Command-line interface for [skore](https://github.com/probabl-ai/skore).
 
-`skore-cli` installs a single `skore` command with four areas:
+It provides a single `skore` command with four areas:
 
 - **skills** — discover, install and manage [Agent Skills](https://agentskills.io)
   from the [probabl-ai/skills](https://github.com/probabl-ai/skills) catalog
@@ -19,12 +29,19 @@ Command-line interface for [skore](https://github.com/probabl-ai/skore).
 
 ## Installation
 
+Install [skore](https://github.com/probabl-ai/skore) (requires Python >= 3.11.4);
+the CLI ships with it. The `hub` extra is needed for `skore hub` and
+`skore sync` against Skore Hub, and the `mlflow` extra for `skore sync` against
+MLflow.
+
 ```bash
-pip install skore-cli
+pip install -U skore[hub]
+uv add 'skore[hub]'
+conda install conda-forge::skore
+pixi add skore
 ```
 
-The base install is batteries-included: it bundles the `agent` feature (so it
-pulls in `skore`). No extras are required.
+The `skore-cli` distribution is deprecated and receives no further updates.
 
 ## Usage
 
